@@ -84,8 +84,23 @@ COURT_RE = re.compile(r"^([KL])코트\s*:\s*(.+)$")
 DATE_RE = re.compile(r"^##\s*(\d{4}-\d{2}-\d{2})")
 
 
+def parse_court_line(raw: str) -> tuple[list[str], list[str]] | None:
+    """'a b vs c d' → (['a','b'], ['c','d']).
+
+    구 표기 'a b c d'(vs 없음)는 1·3번째가 한 팀이라는 규칙으로 해석합니다.
+    """
+    if " vs " in raw:
+        left, right = raw.split(" vs ", 1)
+        t1, t2 = left.split(), right.split()
+        return (t1, t2) if len(t1) == len(t2) == 2 else None
+    names = raw.split()
+    if len(names) != 4:
+        return None
+    return ([names[0], names[2]], [names[1], names[3]])
+
+
 def parse_history() -> list[dict]:
-    """history.md → [{date, courts: [[n1,n2,n3,n4], ...]}, ...] (오래된 순)"""
+    """history.md → [{date, courts: [([t1a,t1b], [t2a,t2b]), ...]}, ...] (오래된 순)"""
     if not HISTORY_MD.exists():
         return []
     sessions: list[dict] = []
@@ -99,9 +114,9 @@ def parse_history() -> list[dict]:
             continue
         m = COURT_RE.match(line)
         if m and current is not None:
-            names = m.group(2).replace(" vs ", " ").split()
-            if len(names) == 4:
-                current["courts"].append(names)
+            teams = parse_court_line(m.group(2))
+            if teams:
+                current["courts"].append(teams)
     sessions.sort(key=lambda s: s["date"])
     return sessions
 
@@ -113,11 +128,10 @@ def history_weights(sessions: list[dict]) -> tuple[Counter, Counter]:
     recent = sessions[-HIST_LOOKBACK:]
     for age, sess in enumerate(reversed(recent)):
         w = HIST_DECAY ** age
-        for names in sess["courts"]:
-            # 표기 규칙: 1·3번째가 한 팀, 2·4번째가 상대 팀
-            for team in ((names[0], names[2]), (names[1], names[3])):
-                partner[frozenset(team)] += w
-            for a, b in combinations(names, 2):
+        for t1, t2 in sess["courts"]:
+            partner[frozenset(t1)] += w
+            partner[frozenset(t2)] += w
+            for a, b in combinations(t1 + t2, 2):
                 same_court[frozenset((a, b))] += w
     return partner, same_court
 
@@ -312,17 +326,22 @@ def assign_courts(ordered: list[Slot], players: list[Player]) -> list[tuple[Cour
 
 
 # --------------------------------------------------------------------- 렌더링
-def court_names(court: Court, players: list[Player]) -> list[str]:
+def court_names(court: Court, players: list[Player]) -> str:
+    """'김제우 김예은 vs 이채윤 조재윤' — 점수가 높은 팀을 왼쪽에 둡니다."""
     t1, t2 = court
-    return [players[t1[0]].name, players[t2[0]].name, players[t1[1]].name, players[t2[1]].name]
+    if sum(players[i].score for i in t1) < sum(players[i].score for i in t2):
+        t1, t2 = t2, t1
+    left = " ".join(players[i].name for i in t1)
+    right = " ".join(players[i].name for i in t2)
+    return f"{left} vs {right}"
 
 
 def render_plan(arranged, players: list[Player], day: str) -> str:
     lines = [f"## {day} 코트운영", ""]
     for t, (c1, c2) in enumerate(arranged):
         lines.append(SLOT_LABELS[t])
-        lines.append("K코트: " + " ".join(court_names(c1, players)))
-        lines.append("L코트: " + " ".join(court_names(c2, players)))
+        lines.append("K코트: " + court_names(c1, players))
+        lines.append("L코트: " + court_names(c2, players))
         lines.append("")
     return "\n".join(lines).rstrip() + "\n"
 
@@ -519,8 +538,26 @@ def cmd_members(args) -> None:
 
 def cmd_history(args) -> None:
     sessions = parse_history()
+    if not sessions:
+        raise SystemExit("[오류] 기록된 대진표가 없습니다.")
     hist_partner, _ = history_weights(sessions)
     print(f"기록된 회차: {len(sessions)}회 ({sessions[0]['date']} ~ {sessions[-1]['date']})")
+
+    print("\n[회차별 점검]")
+    for s in sessions:
+        cs = s["courts"]
+        slots = [set(cs[i][0] + cs[i][1]) | set(cs[i + 1][0] + cs[i + 1][1])
+                 for i in range(0, len(cs) - 1, 2)]
+        everyone = set().union(*slots) if slots else set()
+        issues = []
+        if len(slots) != 3:
+            issues.append(f"타임 {len(slots)}개")
+        if len(everyone) != 8:
+            issues.append(f"인원 {len(everyone)}명")
+        if any(x != everyone for x in slots):
+            issues.append("타임마다 인원 다름")
+        print(f"  {s['date']}  {'OK' if not issues else '확인필요: ' + ', '.join(issues)}")
+
     print("\n[최근 파트너 빈도 상위 15쌍]")
     for pair, w in sorted(hist_partner.items(), key=lambda x: -x[1])[:15]:
         print(f"  {'+'.join(sorted(pair)):<16} {w:.2f}")
