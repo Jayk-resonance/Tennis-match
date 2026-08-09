@@ -49,6 +49,7 @@ SEG_TOLERANCE = 0.5   # '분리 타임' 판정 시 허용하는 실력 겹침 �
 
 K_LOCAL = 90          # 타임별 후보 중 상위 몇 개를 탐색에 쓸지
 K_SEG = 24            # 분리 타임 후보 개수
+K_REQ = 40            # --must-play 조건을 만족하는 타임 후보 개수
 
 
 # ---------------------------------------------------------------- 데이터 로딩
@@ -248,12 +249,29 @@ def global_penalty(
     return pen
 
 
+def make_requirement(spec: str, players: list[Player]):
+    """'남자게스트:남복' → 그 사람이 남복 코트에 들어가는 타임인지 판정하는 함수."""
+    if ":" not in spec:
+        raise SystemExit(f"[오류] --must-play 형식은 '이름:남복|여복|혼복' 입니다: {spec}")
+    name, kind = (x.strip() for x in spec.split(":", 1))
+    if kind not in ("남복", "여복", "혼복"):
+        raise SystemExit(f"[오류] 경기 유형은 남복/여복/혼복 중 하나여야 합니다: {kind}")
+    idx = next((i for i, p in enumerate(players) if p.name == name), None)
+    if idx is None:
+        raise SystemExit(f"[오류] 참석자에 없는 이름입니다: {name}")
+
+    def ok(slot: Slot) -> bool:
+        return any(idx in c[0] + c[1] and match_type(c, players) == kind for c in slot)
+    return ok, f"{name} {kind}"
+
+
 def search(
     players: list[Player],
     hist_partner: Counter,
     hist_opponent: Counter,
     n_candidates: int = 3,
     seed: int | None = None,
+    require=None,
 ) -> list[dict]:
     all_slots = enumerate_slots(players)
     rnd = random.Random(seed) if seed is not None else None
@@ -271,14 +289,22 @@ def search(
     if not segs:
         raise SystemExit("[오류] '잘하는 사람끼리 / 못하는 사람끼리' 타임을 만들 수 없습니다.")
 
+    reqs = None
+    if require is not None:
+        reqs = [(p, s) for p, s in scored if require(s)][:K_REQ]
+        if not reqs:
+            raise SystemExit("[오류] --must-play 조건을 만족하는 타임 배치가 없습니다.")
+
     results = []
     seen: set[frozenset] = set()
     for ps, seg in segs:
-        for i, (pa, a) in enumerate(kept):
+        # 분리 타임이 이미 조건을 만족하면 나머지 두 타임은 자유롭게 고릅니다.
+        pool = kept if (require is None or require(seg)) else reqs
+        for pa, a in pool:
             if a == seg:
                 continue
-            for pb, b in kept[i + 1:]:
-                if b == seg:
+            for pb, b in kept:
+                if b == seg or b == a:
                     continue
                 trio = (seg, a, b)
                 key = frozenset(trio)
@@ -566,8 +592,12 @@ def cmd_generate(args) -> None:
     if any(s["date"] == day for s in sessions):
         print(f"[주의] {day} 대진표가 이미 히스토리에 있습니다.\n", file=sys.stderr)
 
+    require = label = None
+    if args.must_play:
+        require, label = make_requirement(args.must_play, players)
+        print(f"[필수 조건 추가] 한 타임은 '{label}' 보장\n")
     cands = search(players, hist_partner, hist_opponent,
-                   n_candidates=args.top, seed=args.seed)
+                   n_candidates=args.top, seed=args.seed, require=require)
 
     payload = {"date": day, "candidates": []}
     for rank, cand in enumerate(cands, 1):
@@ -765,6 +795,8 @@ def main() -> None:
     g.add_argument("--seg-slot", type=int, default=2, choices=(1, 2, 3),
                    help="실력 분리 타임을 몇 번째 타임에 둘지 (기본 2)")
     g.add_argument("--seed", type=int, help="다른 조합을 뽑고 싶을 때 주는 난수 시드")
+    g.add_argument("--must-play", metavar="이름:남복|여복|혼복",
+                   help="한 타임은 지정한 사람이 해당 유형 경기를 하도록 보장")
     g.add_argument("--explain", action="store_true",
                    help="벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다")
     g.set_defaults(func=cmd_generate)
