@@ -1,0 +1,430 @@
+{
+  "schemaVersion": 1,
+  "rulesVersion": "5cbec4e-web-v2",
+  "levels": {
+    "A+": 6.0,
+    "A": 5.0,
+    "B+": 4.0,
+    "B": 3.0,
+    "B-": 2.5,
+    "C+": 2.0,
+    "C": 1.0,
+    "C-": 0.5,
+    "D": 0.0
+  },
+  "members": [
+    {
+      "id": "member-001",
+      "name": "김제우",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-002",
+      "name": "김동민",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-003",
+      "name": "임재환",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-004",
+      "name": "김현재",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-005",
+      "name": "유병호",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-006",
+      "name": "정민혁",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-007",
+      "name": "박경랑",
+      "gender": "남",
+      "level": "A",
+      "score": 5.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-008",
+      "name": "김동원",
+      "gender": "남",
+      "level": "B+",
+      "score": 4.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-009",
+      "name": "김건희",
+      "gender": "남",
+      "level": "B+",
+      "score": 4.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-010",
+      "name": "김재홍",
+      "gender": "남",
+      "level": "B+",
+      "score": 4.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-011",
+      "name": "조재윤",
+      "gender": "남",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-012",
+      "name": "신명수",
+      "gender": "남",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-013",
+      "name": "손홍현",
+      "gender": "여",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-014",
+      "name": "이채윤",
+      "gender": "여",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-015",
+      "name": "전상원",
+      "gender": "남",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-016",
+      "name": "김준수",
+      "gender": "남",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-017",
+      "name": "함새롬",
+      "gender": "여",
+      "level": "B",
+      "score": 3.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-018",
+      "name": "백선일",
+      "gender": "남",
+      "level": "B-",
+      "score": 2.5,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-019",
+      "name": "진혜주",
+      "gender": "여",
+      "level": "B-",
+      "score": 2.5,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-020",
+      "name": "송혜진",
+      "gender": "여",
+      "level": "B-",
+      "score": 2.5,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-021",
+      "name": "김예은",
+      "gender": "여",
+      "level": "C",
+      "score": 1.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-022",
+      "name": "설승은",
+      "gender": "여",
+      "level": "C",
+      "score": 1.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-023",
+      "name": "안주영",
+      "gender": "여",
+      "level": "C",
+      "score": 1.0,
+      "guest": false,
+      "active": true
+    },
+    {
+      "id": "member-024",
+      "name": "조영혜",
+      "gender": "여",
+      "level": "C-",
+      "score": 0.5,
+      "guest": false,
+      "active": true
+    }
+  ],
+  "sessions": [
+    {
+      "date": "2026-07-12",
+      "courts": [
+        [
+          [
+            "김제우",
+            "진혜주"
+          ],
+          [
+            "김건희",
+            "이채윤"
+          ]
+        ],
+        [
+          [
+            "김동민",
+            "설승은"
+          ],
+          [
+            "조재윤",
+            "손홍현"
+          ]
+        ],
+        [
+          [
+            "김동민",
+            "이채윤"
+          ],
+          [
+            "김건희",
+            "손홍현"
+          ]
+        ],
+        [
+          [
+            "김제우",
+            "설승은"
+          ],
+          [
+            "조재윤",
+            "진혜주"
+          ]
+        ],
+        [
+          [
+            "김동민",
+            "김건희"
+          ],
+          [
+            "김제우",
+            "조재윤"
+          ]
+        ],
+        [
+          [
+            "손홍현",
+            "진혜주"
+          ],
+          [
+            "이채윤",
+            "설승은"
+          ]
+        ]
+      ]
+    },
+    {
+      "date": "2026-07-19",
+      "courts": [
+        [
+          [
+            "이채윤",
+            "조영혜"
+          ],
+          [
+            "송혜진",
+            "김예은"
+          ]
+        ],
+        [
+          [
+            "김현재",
+            "진혜주"
+          ],
+          [
+            "김동원",
+            "손홍현"
+          ]
+        ],
+        [
+          [
+            "김현재",
+            "송혜진"
+          ],
+          [
+            "김동원",
+            "이채윤"
+          ]
+        ],
+        [
+          [
+            "손홍현",
+            "조영혜"
+          ],
+          [
+            "진혜주",
+            "김예은"
+          ]
+        ],
+        [
+          [
+            "김현재",
+            "조영혜"
+          ],
+          [
+            "김동원",
+            "김예은"
+          ]
+        ],
+        [
+          [
+            "손홍현",
+            "송혜진"
+          ],
+          [
+            "진혜주",
+            "이채윤"
+          ]
+        ]
+      ]
+    },
+    {
+      "date": "2026-08-02",
+      "courts": [
+        [
+          [
+            "김준수",
+            "송혜진"
+          ],
+          [
+            "김동원",
+            "조영혜"
+          ]
+        ],
+        [
+          [
+            "김현재",
+            "여자게스트"
+          ],
+          [
+            "손홍현",
+            "남자게스트"
+          ]
+        ],
+        [
+          [
+            "김현재",
+            "남자게스트"
+          ],
+          [
+            "김동원",
+            "김준수"
+          ]
+        ],
+        [
+          [
+            "손홍현",
+            "조영혜"
+          ],
+          [
+            "송혜진",
+            "여자게스트"
+          ]
+        ],
+        [
+          [
+            "김동원",
+            "송혜진"
+          ],
+          [
+            "김준수",
+            "손홍현"
+          ]
+        ],
+        [
+          [
+            "김현재",
+            "조영혜"
+          ],
+          [
+            "남자게스트",
+            "여자게스트"
+          ]
+        ]
+      ]
+    }
+  ]
+}

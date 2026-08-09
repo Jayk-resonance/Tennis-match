@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#6425fe" />
+    <meta name="color-scheme" content="light" />
+    <title>테니스 대진표</title>
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
+    />
+    <link rel="stylesheet" href="./assets/style.css" />
+  </head>
+  <body>
+    <div class="app-layout">
+      <aside class="sidebar" aria-label="주 메뉴">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">T</div>
+          <div>
+            <strong>테니스 대진표</strong>
+            <span>8명 · 2코트 · 3타임</span>
+          </div>
+        </div>
+
+        <nav class="side-nav">
+          <button class="nav-item active" data-view="participants" type="button">
+            <span aria-hidden="true">👥</span> 참석자 선택
+          </button>
+          <button class="nav-item" data-view="results" type="button">
+            <span aria-hidden="true">🎾</span> 대진표
+          </button>
+          <button class="nav-item" data-view="history" type="button">
+            <span aria-hidden="true">🗓️</span> 확정 기록
+          </button>
+          <button class="nav-item" data-view="guide" type="button">
+            <span aria-hidden="true">💡</span> 이용 안내
+          </button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <span id="sideModeBadge" class="mode-badge local">로컬 데모</span>
+          <p id="operatorLabel">이 기기에만 저장됩니다</p>
+          <button id="signOutButton" class="text-button hidden" type="button">로그아웃</button>
+        </div>
+      </aside>
+
+      <main class="main-shell">
+        <header class="mobile-header">
+          <div class="mobile-brand">
+            <div class="brand-mark small" aria-hidden="true">T</div>
+            <div>
+              <strong>테니스 대진표</strong>
+              <span id="mobileSectionLabel">참석자 선택</span>
+            </div>
+          </div>
+          <span id="mobileModeBadge" class="mode-badge local">로컬</span>
+        </header>
+
+        <div class="content-wrap">
+          <section id="participantsView" class="view active" data-view-panel="participants">
+            <div class="hero participant-hero">
+              <div class="hero-copy">
+                <span class="eyebrow">이번 주 코트 운영</span>
+                <h1>참석자 8명을 선택하세요</h1>
+                <p>회원은 눌러서 선택하고, 처음 온 분은 게스트로 바로 추가할 수 있습니다.</p>
+              </div>
+              <div class="selection-meter" aria-live="polite">
+                <strong id="selectedCount">0</strong><span>/ 8명</span>
+              </div>
+              <div class="hero-controls">
+                <label class="field compact">
+                  <span>대진 날짜</span>
+                  <input id="matchDate" type="date" />
+                </label>
+                <label class="field compact">
+                  <span>실력 분리 타임</span>
+                  <select id="segregatedSlot">
+                    <option value="1">1타임</option>
+                    <option value="2" selected>2타임</option>
+                    <option value="3">3타임</option>
+                  </select>
+                </label>
+              </div>
+              <div id="selectedPlayers" class="selected-players" aria-label="선택된 참석자"></div>
+              <button id="generateButton" class="primary-button hero-action" type="button" disabled>
+                대진표 후보 만들기
+              </button>
+            </div>
+
+            <div class="card member-card">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">회원 명단</span>
+                  <h2>이름을 눌러 선택</h2>
+                </div>
+                <div class="section-actions">
+                  <button id="manageMembersButton" class="secondary-button" type="button">회원 관리</button>
+                  <button id="openMemberButton" class="secondary-button" type="button">+ 신규 회원</button>
+                  <button id="openGuestButton" class="secondary-button" type="button">+ 게스트</button>
+                </div>
+              </div>
+              <label class="search-field">
+                <span class="sr-only">회원 검색</span>
+                <span aria-hidden="true">⌕</span>
+                <input id="memberSearch" type="search" placeholder="이름 또는 레벨 검색" autocomplete="off" />
+              </label>
+              <div id="memberFilters" class="filter-row" aria-label="회원 필터">
+                <button class="filter-chip active" data-filter="all" type="button">전체</button>
+                <button class="filter-chip" data-filter="남" type="button">남자</button>
+                <button class="filter-chip" data-filter="여" type="button">여자</button>
+                <button class="filter-chip" data-filter="selected" type="button">선택됨</button>
+                <button id="inactiveFilter" class="filter-chip hidden" data-filter="inactive" type="button">비활성</button>
+              </div>
+              <div id="memberGrid" class="member-grid" aria-live="polite"></div>
+            </div>
+          </section>
+
+          <section id="resultsView" class="view" data-view-panel="results" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">자동 생성 결과</span>
+                <h1>후보를 비교하고 조정하세요</h1>
+                <p>선수를 끌어 놓거나 두 명을 차례로 눌러 같은 타임 안에서 교환할 수 있습니다.</p>
+              </div>
+              <button id="regenerateButton" class="secondary-button" type="button">다른 조합</button>
+            </div>
+
+            <div id="candidateTabs" class="candidate-tabs" role="tablist" aria-label="대진 후보"></div>
+            <div id="resultEmpty" class="empty-state">
+              <span aria-hidden="true">🎾</span>
+              <h2>아직 만든 대진표가 없습니다</h2>
+              <p>참석자 8명을 선택하면 균형이 좋은 후보 3개를 보여드립니다.</p>
+              <button class="primary-button" data-view="participants" type="button">참석자 선택하기</button>
+            </div>
+
+            <div id="resultContent" class="result-content hidden">
+              <div id="evaluationCard" class="hero evaluation-hero"></div>
+              <div class="edit-toolbar" aria-label="대진 편집 도구">
+                <p><span aria-hidden="true">↕</span> 손잡이를 끌거나 이름 두 개를 차례로 누르세요.</p>
+                <div>
+                  <button id="undoButton" class="icon-button" type="button" disabled>실행 취소</button>
+                  <button id="resetButton" class="icon-button" type="button">원래 후보</button>
+                </div>
+              </div>
+              <div id="scheduleBoard" class="schedule-board"></div>
+              <div class="sticky-actions">
+                <button id="shareButton" class="secondary-button" type="button">복사·공유</button>
+                <button id="confirmButton" class="primary-button" type="button">이 대진 확정</button>
+              </div>
+            </div>
+          </section>
+
+          <section id="historyView" class="view" data-view-panel="history" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">공유 히스토리</span>
+                <h1>확정된 대진표</h1>
+                <p>Firebase 연결 후에는 두 운영자가 같은 기록을 실시간으로 봅니다.</p>
+              </div>
+              <button id="exportButton" class="secondary-button" type="button">백업 내보내기</button>
+            </div>
+            <div id="historyList" class="history-list"></div>
+          </section>
+
+          <section id="guideView" class="view" data-view-panel="guide" hidden>
+            <div class="page-heading">
+              <div>
+                <span class="eyebrow">비개발자용 안내</span>
+                <h1>사이트는 이렇게 작동합니다</h1>
+                <p>LLM이나 별도 서버 없이도 브라우저가 현재 브랜치의 규칙을 직접 계산합니다.</p>
+              </div>
+            </div>
+            <div class="guide-grid">
+              <article class="card guide-card">
+                <span class="guide-number">1</span>
+                <h2>두 운영자만 로그인</h2>
+                <p>공개 회원가입은 없습니다. Firebase에서 미리 만든 운영자 계정 두 개만 사용합니다.</p>
+              </article>
+              <article class="card guide-card">
+                <span class="guide-number">2</span>
+                <h2>후보는 휴대폰에서 계산</h2>
+                <p>레벨·성별·최근 이력을 숫자로 계산하므로 LLM 호출 비용이 없고 인터넷이 느려도 생성됩니다.</p>
+              </article>
+              <article class="card guide-card">
+                <span class="guide-number">3</span>
+                <h2>확정할 때만 공유 저장</h2>
+                <p>후보를 비교하고 편집하는 동안에는 개인 화면에만 있고, 확정 버튼을 눌러야 공유 히스토리에 들어갑니다.</p>
+              </article>
+            </div>
+            <div class="card rules-card">
+              <div class="section-heading">
+                <div>
+                  <span class="eyebrow">적용 규칙</span>
+                  <h2>후보 평가에 모두 반영됩니다</h2>
+                </div>
+                <span class="rule-version">5cbec4e · web-v2</span>
+              </div>
+              <div class="rule-list">
+                <div><strong>필수</strong><span>8명 · 2코트 · 3타임 · 실력 분리 타임 1회 이상</span></div>
+                <div><strong>팀 균형</strong><span>팀 점수 차 1점당 10 · 1.5점 초과분은 추가 25</span></div>
+                <div><strong>당일 다양성</strong><span>파트너·상대 반복 및 3타임 연속 상대 벌점</span></div>
+                <div><strong>최근 이력</strong><span>최근 파트너와 상대 재대결을 8회차까지 감쇠 반영</span></div>
+                <div><strong>성별 구성</strong><span>혼복·남복·여복이 아닌 코트에 벌점</span></div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <nav class="mobile-bottom-nav" aria-label="모바일 주 메뉴">
+          <button class="active" data-view="participants" type="button"><span>👥</span>참석자</button>
+          <button data-view="results" type="button"><span>🎾</span>대진표</button>
+          <button data-view="history" type="button"><span>🗓️</span>기록</button>
+          <button data-view="guide" type="button"><span>💡</span>안내</button>
+        </nav>
+      </main>
+    </div>
+
+    <dialog id="guestDialog" class="modal">
+      <form id="guestForm" method="dialog">
+        <div class="modal-heading">
+          <div>
+            <span id="participantDialogEyebrow" class="eyebrow">새 참가자</span>
+            <h2 id="participantDialogTitle">이름과 실력을 입력하세요</h2>
+          </div>
+          <button id="guestDialogClose" class="modal-close" aria-label="닫기" type="button">×</button>
+        </div>
+        <label class="field">
+          <span>이름</span>
+          <input id="guestName" name="name" required maxlength="20" autocomplete="off" />
+        </label>
+        <div class="field-group">
+          <label class="field">
+            <span>성별</span>
+            <select id="guestGender" name="gender" required>
+              <option value="남">남</option>
+              <option value="여">여</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>레벨</span>
+            <select id="guestLevel" name="level" required></select>
+          </label>
+        </div>
+        <label class="check-row">
+          <input id="saveAsMember" type="checkbox" />
+          <span><strong>회원 명단에 저장</strong><small>두 운영자가 다음에도 선택할 수 있습니다.</small></span>
+        </label>
+        <button id="participantSubmitButton" class="primary-button full" value="default" type="submit">참석자로 추가</button>
+      </form>
+    </dialog>
+
+    <dialog id="loginDialog" class="modal login-modal">
+      <div class="login-panel">
+        <div class="login-mark">T</div>
+        <span class="eyebrow">운영자 전용</span>
+        <h2>Google 계정으로 함께 운영하세요</h2>
+        <p>허용된 두 운영자의 Google 계정만 공유 기록을 사용할 수 있습니다.</p>
+        <p id="loginError" class="form-error" role="alert"></p>
+        <button id="googleSignInButton" class="google-signin-button" type="button">
+          <span class="google-mark" aria-hidden="true">G</span>
+          Google 계정으로 로그인
+        </button>
+        <small class="login-help">계정을 선택해도 허용 목록에 없는 사용자는 데이터에 접근할 수 없습니다.</small>
+      </div>
+    </dialog>
+
+    <div id="loadingOverlay" class="loading-overlay hidden" role="status" aria-live="polite">
+      <div class="loading-card">
+        <div class="spinner" aria-hidden="true"></div>
+        <strong>균형이 좋은 조합을 찾는 중</strong>
+        <p id="loadingText">315개 타임 조합을 비교하고 있습니다.</p>
+        <div class="progress-track"><span id="progressBar"></span></div>
+      </div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script type="module" src="./assets/app.js"></script>
+  </body>
+</html>

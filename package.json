@@ -1,0 +1,11 @@
+{
+  "name": "tennis-match-mobile-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "data": "python scripts/export_web_data.py",
+    "data:check": "python scripts/export_web_data.py --check",
+    "test:web": "node --test tests/web/matchup-core.test.mjs",
+    "test": "npm run data:check && npm run test:web && python -m unittest discover -s tests -p \"test_*.py\""
+  }
+}

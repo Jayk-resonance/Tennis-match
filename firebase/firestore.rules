@@ -1,0 +1,30 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isOperator() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/operators/$(request.auth.uid));
+    }
+
+    match /operators/{userId} {
+      allow read: if isOperator() && request.auth.uid == userId;
+      allow write: if false;
+    }
+
+    match /members/{memberId} {
+      allow read, create, update: if isOperator();
+      allow delete: if false;
+    }
+
+    match /sessions/{sessionDate} {
+      allow read, create, update: if isOperator();
+      allow delete: if false;
+
+      match /revisions/{revisionId} {
+        allow read, create: if isOperator();
+        allow update, delete: if false;
+      }
+    }
+  }
+}
