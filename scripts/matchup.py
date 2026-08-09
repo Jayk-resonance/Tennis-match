@@ -735,9 +735,15 @@ def cmd_history(args) -> None:
 
         print(f"  {s['date']}  {'OK' if not issues else '확인필요 — ' + ' / '.join(issues)}")
 
+    # 게스트(회원 명단에 없는 이름)는 매번 다른 사람이므로 이력 집계에서 뺍니다.
+    member_pairs = {p: w for p, w in hist_partner.items() if all(n in members for n in p)}
+    skipped = len(hist_partner) - len(member_pairs)
+
     print("\n[최근 파트너 빈도 상위 15쌍]")
-    for pair, w in sorted(hist_partner.items(), key=lambda x: -x[1])[:15]:
+    for pair, w in sorted(member_pairs.items(), key=lambda x: -x[1])[:15]:
         print(f"  {'+'.join(sorted(pair)):<16} {w:.2f}")
+    if skipped:
+        print(f"  (게스트가 낀 {skipped}쌍은 제외 — 이름이 같아도 매번 다른 사람)")
 
 
 def main() -> None:
