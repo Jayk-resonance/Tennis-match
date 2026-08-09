@@ -15,6 +15,27 @@ function clone(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function encodeSession(session) {
+  const payload = clone(session);
+  for (const field of ["schedule", "courts"]) {
+    if (payload[field] === undefined) continue;
+    payload[`${field}Json`] = JSON.stringify(payload[field]);
+    delete payload[field];
+  }
+  return payload;
+}
+
+function decodeSession(date, data) {
+  const session = { date, ...clone(data) };
+  for (const field of ["schedule", "courts"]) {
+    const jsonField = `${field}Json`;
+    if (typeof session[jsonField] !== "string") continue;
+    session[field] = JSON.parse(session[jsonField]);
+    delete session[jsonField];
+  }
+  return session;
+}
+
 function readLocal(key, fallback) {
   try {
     const stored = localStorage.getItem(key);
@@ -180,8 +201,9 @@ class FirebaseStore {
       batch.set(fs.doc(this.db, "members", member.id), { ...member, seeded: true });
     });
     this.seedData.sessions.forEach((session) => {
+      const payload = encodeSession(session);
       batch.set(fs.doc(this.db, "sessions", session.date), {
-        ...session,
+        ...payload,
         revision: 1,
         status: "imported",
         rulesVersion: this.seedData.rulesVersion,
@@ -204,7 +226,7 @@ class FirebaseStore {
     );
     const unsubscribeSessions = fs.onSnapshot(
       sessionQuery,
-      (snapshot) => onSessions(snapshot.docs.map((item) => ({ date: item.id, ...item.data() }))),
+      (snapshot) => onSessions(snapshot.docs.map((item) => decodeSession(item.id, item.data()))),
       onError,
     );
     return () => {
@@ -257,7 +279,10 @@ class FirebaseStore {
         revision: currentRevision + 1,
         updatedBy: this.user.email,
       });
-      transaction.set(sessionRef, { ...saved, updatedAt: fs.serverTimestamp() });
+      transaction.set(sessionRef, {
+        ...encodeSession(saved),
+        updatedAt: fs.serverTimestamp(),
+      });
       return saved;
     });
   }
@@ -271,7 +296,7 @@ class FirebaseStore {
     return {
       exportedAt: new Date().toISOString(),
       members: members.docs.map((item) => ({ id: item.id, ...item.data() })),
-      sessions: sessions.docs.map((item) => ({ date: item.id, ...item.data() })),
+      sessions: sessions.docs.map((item) => decodeSession(item.id, item.data())),
     };
   }
 }

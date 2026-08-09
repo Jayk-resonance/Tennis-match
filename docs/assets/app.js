@@ -6,7 +6,7 @@ import {
   scheduleToText,
   swapPlayers,
 } from "./matchup-core.js";
-import { ConflictError, createStore } from "./store.js?v=20260810-1";
+import { ConflictError, createStore } from "./store.js?v=20260810-2";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
