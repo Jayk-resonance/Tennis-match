@@ -37,9 +37,10 @@ W_BALANCE = 10.0      # 한 코트 안 두 팀의 점수 차 1점당 벌점
 W_GENDER = 12.0       # 혼복/남복/여복이 아닌 코트마다 벌점 (2남2녀는 혼복이어야 함)
 W_SPREAD = 0.5        # 한 코트 안 최고-최저 실력 차 1점당 벌점(약한 보정)
 W_DUP_PARTNER = 25.0  # 같은 날 같은 파트너 반복 1회당 벌점
-W_DUP_OPPONENT = 3.0  # 같은 날 같은 상대 반복 1회당 벌점
+W_DUP_OPPONENT = 3.0  # 같은 날 같은 상대를 2번 만날 때 벌점
+W_OPP_ALL3 = 30.0     # 같은 상대를 3타임 내내 만날 때 추가 벌점
 W_HIST_PARTNER = 5.0  # 과거 파트너 이력 가중치 (팀당 1회 적용, 하루 12회)
-W_HIST_COURT = 0.3    # 과거 같은 코트 이력 가중치 (쌍당 1회 적용, 하루 36회)
+W_HIST_OPPONENT = 1.5  # 과거 상대 이력 가중치 (쌍당 1회 적용, 하루 24회)
 HIST_DECAY = 0.75     # 한 회차 거슬러 올라갈 때마다 이력 가중치 감쇠
 HIST_LOOKBACK = 8     # 최근 몇 회차까지 볼지
 SEG_TOLERANCE = 0.5   # '분리 타임' 판정 시 허용하는 실력 겹침 폭
@@ -122,18 +123,19 @@ def parse_history() -> list[dict]:
 
 
 def history_weights(sessions: list[dict]) -> tuple[Counter, Counter]:
-    """최근 회차일수록 큰 가중치로 파트너/같은코트 이력을 집계."""
+    """최근 회차일수록 큰 가중치로 파트너/상대 이력을 집계."""
     partner: Counter = Counter()
-    same_court: Counter = Counter()
+    opponent: Counter = Counter()
     recent = sessions[-HIST_LOOKBACK:]
     for age, sess in enumerate(reversed(recent)):
         w = HIST_DECAY ** age
         for t1, t2 in sess["courts"]:
             partner[frozenset(t1)] += w
             partner[frozenset(t2)] += w
-            for a, b in combinations(t1 + t2, 2):
-                same_court[frozenset((a, b))] += w
-    return partner, same_court
+            for a in t1:
+                for b in t2:
+                    opponent[frozenset((a, b))] += w
+    return partner, opponent
 
 
 # ------------------------------------------------------------------ 대진 탐색
@@ -197,8 +199,8 @@ def is_segregated(slot: Slot, players: list[Player]) -> bool:
     return min(strong) >= max(weak) - SEG_TOLERANCE
 
 
-def slot_pairs(slot: Slot) -> tuple[list[frozenset], list[frozenset], list[frozenset]]:
-    partners, opponents, court_mates = [], [], []
+def slot_pairs(slot: Slot) -> tuple[list[frozenset], list[frozenset]]:
+    partners, opponents = [], []
     for court in slot:
         t1, t2 = court
         partners.append(frozenset(t1))
@@ -206,39 +208,47 @@ def slot_pairs(slot: Slot) -> tuple[list[frozenset], list[frozenset], list[froze
         for a in t1:
             for b in t2:
                 opponents.append(frozenset((a, b)))
-        for a, b in combinations(t1 + t2, 2):
-            court_mates.append(frozenset((a, b)))
-    return partners, opponents, court_mates
+    return partners, opponents
+
+
+def hist_key(pair: frozenset, players: list[Player]) -> frozenset | None:
+    """이력 조회용 이름 쌍. 게스트가 낀 쌍은 None — 매번 다른 사람으로 봅니다."""
+    if any(players[i].guest for i in pair):
+        return None
+    return frozenset(players[i].name for i in pair)
 
 
 def global_penalty(
     slots: tuple[Slot, Slot, Slot],
     players: list[Player],
     hist_partner: Counter,
-    hist_court: Counter,
+    hist_opponent: Counter,
 ) -> float:
     pen = 0.0
     partner_c: Counter = Counter()
     opponent_c: Counter = Counter()
     for slot in slots:
-        partners, opponents, court_mates = slot_pairs(slot)
+        partners, opponents = slot_pairs(slot)
         partner_c.update(partners)
         opponent_c.update(opponents)
         for pair in partners:
-            key = frozenset(players[i].name for i in pair)
-            pen += W_HIST_PARTNER * hist_partner.get(key, 0.0)
-        for pair in court_mates:
-            key = frozenset(players[i].name for i in pair)
-            pen += W_HIST_COURT * hist_court.get(key, 0.0)
+            key = hist_key(pair, players)
+            if key:
+                pen += W_HIST_PARTNER * hist_partner.get(key, 0.0)
+        for pair in opponents:
+            key = hist_key(pair, players)
+            if key:
+                pen += W_HIST_OPPONENT * hist_opponent.get(key, 0.0)
     pen += W_DUP_PARTNER * sum(c - 1 for c in partner_c.values() if c > 1)
     pen += W_DUP_OPPONENT * sum(c - 1 for c in opponent_c.values() if c > 1)
+    pen += W_OPP_ALL3 * sum(1 for c in opponent_c.values() if c >= 3)
     return pen
 
 
 def search(
     players: list[Player],
     hist_partner: Counter,
-    hist_court: Counter,
+    hist_opponent: Counter,
     n_candidates: int = 3,
     seed: int | None = None,
 ) -> list[dict]:
@@ -272,7 +282,7 @@ def search(
                 if key in seen:
                     continue
                 seen.add(key)
-                total = ps + pa + pb + global_penalty(trio, players, hist_partner, hist_court)
+                total = ps + pa + pb + global_penalty(trio, players, hist_partner, hist_opponent)
                 results.append((total, trio, seg))
 
     results.sort(key=lambda x: x[0])
@@ -367,7 +377,8 @@ def match_type(c: Court, players: list[Player]) -> str:
     return f"⚠{g1} vs {g2}"
 
 
-def render_analysis(arranged, players: list[Player], hist_partner: Counter, seg: Slot) -> str:
+def render_analysis(arranged, players: list[Player], hist_partner: Counter,
+                    hist_opponent: Counter, seg: Slot) -> str:
     lines = ["[균형 분석]"]
     for t, (c1, c2) in enumerate(arranged):
         tag = " ← 실력 분리 타임" if is_segregated((c1, c2), players) else ""
@@ -383,7 +394,7 @@ def render_analysis(arranged, players: list[Player], hist_partner: Counter, seg:
     partner_c: Counter = Counter()
     opponent_c: Counter = Counter()
     for c1, c2 in arranged:
-        p, o, _ = slot_pairs((c1, c2))
+        p, o = slot_pairs((c1, c2))
         partner_c.update(p)
         opponent_c.update(o)
 
@@ -399,15 +410,29 @@ def render_analysis(arranged, players: list[Player], hist_partner: Counter, seg:
     dup_o = [(pair, c) for pair, c in opponent_c.items() if c > 2]
     if dup_o:
         txt = ", ".join(f"{'-'.join(players[i].name for i in pair)}×{c}" for pair, c in dup_o)
-        lines.append(f"[상대 3회 이상] {txt}")
+        lines.append(f"[⚠ 3타임 내내 상대] {txt}")
+    else:
+        lines.append("[3타임 내내 상대] 없음")
 
     reused = []
-    for pair, c in partner_c.items():
-        key = frozenset(players[i].name for i in pair)
-        w = hist_partner.get(key, 0.0)
+    for pair in partner_c:
+        key = hist_key(pair, players)
+        w = hist_partner.get(key, 0.0) if key else 0.0
         if w > 0:
-            reused.append(f"{'+'.join(players[i].name for i in pair)}(최근 이력 {w:.2f})")
+            reused.append(f"{'+'.join(players[i].name for i in pair)}({w:.2f})")
     lines.append("[최근 파트너 재조합] " + (", ".join(reused) if reused else "없음"))
+
+    reused_o = []
+    for pair in opponent_c:
+        key = hist_key(pair, players)
+        w = hist_opponent.get(key, 0.0) if key else 0.0
+        if w >= 1.0:
+            reused_o.append(f"{'-'.join(players[i].name for i in pair)}({w:.2f})")
+    lines.append("[최근 상대 재대결] " + (", ".join(sorted(reused_o)) if reused_o else "없음"))
+
+    guests = [p.name for p in players if p.guest]
+    if guests:
+        lines.append(f"[게스트] {', '.join(guests)} — 매번 다른 사람으로 보고 이력 조회 안 함")
 
     per_player = []
     for i, p in enumerate(players):
@@ -424,7 +449,7 @@ def render_analysis(arranged, players: list[Player], hist_partner: Counter, seg:
 
 
 def penalty_breakdown(arranged, players: list[Player],
-                      hist_partner: Counter, hist_court: Counter) -> str:
+                      hist_partner: Counter, hist_opponent: Counter) -> str:
     """벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다."""
     slots = [(c1, c2) for c1, c2 in arranged]
     bal = gen = spread = 0.0
@@ -440,27 +465,31 @@ def penalty_breakdown(arranged, players: list[Player],
 
     partner_c: Counter = Counter()
     opponent_c: Counter = Counter()
-    hp = hc = 0.0
+    hp = ho = 0.0
     for slot in slots:
-        p, o, cm = slot_pairs(slot)
+        p, o = slot_pairs(slot)
         partner_c.update(p)
         opponent_c.update(o)
         for pair in p:
-            hp += W_HIST_PARTNER * hist_partner.get(
-                frozenset(players[i].name for i in pair), 0.0)
-        for pair in cm:
-            hc += W_HIST_COURT * hist_court.get(
-                frozenset(players[i].name for i in pair), 0.0)
+            key = hist_key(pair, players)
+            if key:
+                hp += W_HIST_PARTNER * hist_partner.get(key, 0.0)
+        for pair in o:
+            key = hist_key(pair, players)
+            if key:
+                ho += W_HIST_OPPONENT * hist_opponent.get(key, 0.0)
     dup_p = W_DUP_PARTNER * sum(c - 1 for c in partner_c.values() if c > 1)
     dup_o = W_DUP_OPPONENT * sum(c - 1 for c in opponent_c.values() if c > 1)
+    all3 = W_OPP_ALL3 * sum(1 for c in opponent_c.values() if c >= 3)
 
     rows = [
         ("코트 내 팀 실력 균형", bal, f"팀 점수 차 1점당 {W_BALANCE:g}  × 코트 6개"),
         ("같은 날 파트너 중복", dup_p, f"중복 1회당 {W_DUP_PARTNER:g}"),
+        ("3타임 내내 같은 상대", all3, f"해당 쌍당 {W_OPP_ALL3:g}"),
         ("혼복·남복·여복 어긋남", gen, f"어긋난 코트당 {W_GENDER:g}  × 코트 6개"),
         ("최근 파트너 재조합", hp, f"이력 가중치 × {W_HIST_PARTNER:g}  × 팀 12개"),
+        ("최근 상대 재대결", ho, f"이력 가중치 × {W_HIST_OPPONENT:g}  × 쌍 24개"),
         ("같은 날 상대 중복", dup_o, f"중복 1회당 {W_DUP_OPPONENT:g}"),
-        ("최근 같은 코트", hc, f"이력 가중치 × {W_HIST_COURT:g}  × 쌍 36개"),
         ("코트 내 실력 편차", spread, f"최고-최저 1점당 {W_SPREAD:g}  × 코트 6개"),
     ]
     total = sum(r[1] for r in rows)
@@ -518,7 +547,7 @@ def cmd_generate(args) -> None:
     levels = load_levels()
     members = load_members(levels)
     sessions = parse_history()
-    hist_partner, hist_court = history_weights(sessions)
+    hist_partner, hist_opponent = history_weights(sessions)
 
     players = resolve_players(args.names, members, args.guest, levels)
     if len(players) != 8:
@@ -531,14 +560,16 @@ def cmd_generate(args) -> None:
     if any(s["date"] == day for s in sessions):
         print(f"[주의] {day} 대진표가 이미 히스토리에 있습니다.\n", file=sys.stderr)
 
-    cands = search(players, hist_partner, hist_court, n_candidates=args.top, seed=args.seed)
+    cands = search(players, hist_partner, hist_opponent,
+                   n_candidates=args.top, seed=args.seed)
 
     payload = {"date": day, "candidates": []}
     for rank, cand in enumerate(cands, 1):
         ordered = order_slots(cand, players, args.seg_slot)
         arranged = assign_courts(ordered, players)
         plan = render_plan(arranged, players, day)
-        analysis = render_analysis(arranged, players, hist_partner, cand["seg"])
+        analysis = render_analysis(arranged, players, hist_partner,
+                                   hist_opponent, cand["seg"])
         payload["candidates"].append(
             {"rank": rank, "penalty": round(cand["penalty"], 2),
              "plan": plan, "analysis": analysis}
@@ -547,7 +578,7 @@ def cmd_generate(args) -> None:
         print(plan)
         print(analysis)
         if args.explain:
-            print(penalty_breakdown(arranged, players, hist_partner, hist_court))
+            print(penalty_breakdown(arranged, players, hist_partner, hist_opponent))
         print()
 
     PENDING_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
