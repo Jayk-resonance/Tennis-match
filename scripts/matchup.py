@@ -34,6 +34,8 @@ SLOT_LABELS = ("20:00-20:50 (몸풀기 포함)", "20:50-21:25", "21:25-22:00")
 
 # ---------------------------------------------------------------- 가중치 설정
 W_BALANCE = 10.0      # 한 코트 안 두 팀의 점수 차 1점당 벌점
+BAL_KNEE = 1.5        # 이 점수 차를 넘으면 '일방적인 경기'로 보고 가중 처벌
+W_BAL_HEAVY = 25.0    # BAL_KNEE 초과분 1점당 추가 벌점
 W_GENDER = 12.0       # 혼복/남복/여복이 아닌 코트마다 벌점 (2남2녀는 혼복이어야 함)
 W_SPREAD = 0.5        # 한 코트 안 최고-최저 실력 차 1점당 벌점(약한 보정)
 W_DUP_PARTNER = 25.0  # 같은 날 같은 파트너 반복 1회당 벌점
@@ -181,7 +183,8 @@ def local_penalty(slot: Slot, players: list[Player]) -> float:
         t1, t2 = court
         s1 = players[t1[0]].score + players[t1[1]].score
         s2 = players[t2[0]].score + players[t2[1]].score
-        pen += W_BALANCE * abs(s1 - s2)
+        diff = abs(s1 - s2)
+        pen += W_BALANCE * diff + W_BAL_HEAVY * max(0.0, diff - BAL_KNEE)
         pen += W_GENDER * gender_mismatch(court, players)
         allp = t1 + t2
         scores = [players[i].score for i in allp]
@@ -452,13 +455,15 @@ def penalty_breakdown(arranged, players: list[Player],
                       hist_partner: Counter, hist_opponent: Counter) -> str:
     """벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다."""
     slots = [(c1, c2) for c1, c2 in arranged]
-    bal = gen = spread = 0.0
+    bal = heavy = gen = spread = 0.0
     for c1, c2 in slots:
         for court in (c1, c2):
             t1, t2 = court
             s1 = sum(players[i].score for i in t1)
             s2 = sum(players[i].score for i in t2)
-            bal += W_BALANCE * abs(s1 - s2)
+            diff = abs(s1 - s2)
+            bal += W_BALANCE * diff
+            heavy += W_BAL_HEAVY * max(0.0, diff - BAL_KNEE)
             gen += W_GENDER * gender_mismatch(court, players)
             sc = [players[i].score for i in t1 + t2]
             spread += W_SPREAD * (max(sc) - min(sc))
@@ -484,6 +489,7 @@ def penalty_breakdown(arranged, players: list[Player],
 
     rows = [
         ("코트 내 팀 실력 균형", bal, f"팀 점수 차 1점당 {W_BALANCE:g}  × 코트 6개"),
+        ("일방적인 코트", heavy, f"{BAL_KNEE:g}점 차 초과분 1점당 {W_BAL_HEAVY:g}"),
         ("같은 날 파트너 중복", dup_p, f"중복 1회당 {W_DUP_PARTNER:g}"),
         ("3타임 내내 같은 상대", all3, f"해당 쌍당 {W_OPP_ALL3:g}"),
         ("혼복·남복·여복 어긋남", gen, f"어긋난 코트당 {W_GENDER:g}  × 코트 6개"),
