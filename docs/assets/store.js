@@ -173,7 +173,7 @@ class FirebaseStore {
   async seedIfEmpty() {
     const fs = this.modules.firestore;
     const membersRef = fs.collection(this.db, "members");
-    const existingMembers = await fs.getDocs(fs.limit(fs.query(membersRef), 1));
+    const existingMembers = await fs.getDocs(fs.query(membersRef, fs.limit(1)));
     if (!existingMembers.empty) return;
     const batch = fs.writeBatch(this.db);
     this.seedData.members.forEach((member) => {
