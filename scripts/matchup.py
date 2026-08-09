@@ -19,7 +19,7 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
-from itertools import combinations
+from itertools import combinations, product
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -265,66 +265,125 @@ def make_requirement(spec: str, players: list[Player]):
     return ok, f"{name} {kind}"
 
 
+COMP_RE = re.compile(r"^(\d)남(\d)녀$")
+
+
+def make_exclusion(spec: str, players: list[Player]):
+    """'남자게스트:1남3녀' → 그 사람이 그런 성별 구성의 코트에 들어가는 타임을 금지."""
+    if ":" not in spec:
+        raise SystemExit(f"[오류] --never 형식은 '이름:N남M녀' 입니다: {spec}")
+    name, comp = (x.strip() for x in spec.split(":", 1))
+    m = COMP_RE.match(comp)
+    if not m or int(m.group(1)) + int(m.group(2)) != 4:
+        raise SystemExit(f"[오류] 코트 구성은 합이 4여야 합니다 (예: 1남3녀): {comp}")
+    want_m = int(m.group(1))
+    idx = next((i for i, p in enumerate(players) if p.name == name), None)
+    if idx is None:
+        raise SystemExit(f"[오류] 참석자에 없는 이름입니다: {name}")
+
+    def bad(slot: Slot) -> bool:
+        for c in slot:
+            four = c[0] + c[1]
+            if idx in four:
+                return sum(1 for i in four if players[i].gender == "남") == want_m
+        return False
+    return bad, f"{name}는 {comp} 코트 금지"
+
+
+def make_separation(spec: str, players: list[Player]):
+    """'김예은,조영혜' → 두 사람이 서로 다른 코트인 타임."""
+    parts = [x.strip() for x in spec.split(",")]
+    if len(parts) != 2:
+        raise SystemExit(f"[오류] --separate 형식은 '이름A,이름B' 입니다: {spec}")
+    ids = []
+    for n in parts:
+        i = next((k for k, p in enumerate(players) if p.name == n), None)
+        if i is None:
+            raise SystemExit(f"[오류] 참석자에 없는 이름입니다: {n}")
+        ids.append(i)
+    a, b = ids
+
+    def ok(slot: Slot) -> bool:
+        return not any({a, b} <= set(c[0] + c[1]) for c in slot)
+    return ok, f"{parts[0]}·{parts[1]} 다른 코트"
+
+
 def search(
     players: list[Player],
     hist_partner: Counter,
     hist_opponent: Counter,
     n_candidates: int = 3,
     seed: int | None = None,
-    require=None,
+    requires: list = (),
+    excludes: list = (),
 ) -> list[dict]:
-    all_slots = enumerate_slots(players)
-    rnd = random.Random(seed) if seed is not None else None
+    """3타임을 고릅니다.
 
-    scored = []
+    excludes — 하나라도 걸리면 그 타임 배치를 아예 후보에서 뺍니다(모든 타임에 적용).
+    requires — 3타임 중 **최소 한 타임**이 만족해야 하는 조건들.
+    """
+    all_slots = enumerate_slots(players)
+    for pred, label in excludes:
+        all_slots = [s for s in all_slots if not pred(s)]
+        if not all_slots:
+            raise SystemExit(f"[오류] '{label}' 조건을 만족하는 타임 배치가 없습니다.")
+
+    rnd = random.Random(seed) if seed is not None else None
+    localpen = {}
     for slot in all_slots:
         pen = local_penalty(slot, players)
         if rnd is not None:
             pen += rnd.uniform(0, 1.5)
-        scored.append((pen, slot))
-    scored.sort(key=lambda x: x[0])
+        localpen[slot] = pen
+    ordered = sorted(all_slots, key=lambda s: localpen[s])
 
-    kept = scored[:K_LOCAL]
-    segs = [(p, s) for p, s in scored if is_segregated(s, players)][:K_SEG]
-    if not segs:
-        raise SystemExit("[오류] '잘하는 사람끼리 / 못하는 사람끼리' 타임을 만들 수 없습니다.")
+    kept = ordered[:K_LOCAL]
+    preds = [(lambda s: is_segregated(s, players), "실력 분리 타임")] + list(requires)
 
-    reqs = None
-    if require is not None:
-        reqs = [(p, s) for p, s in scored if require(s)][:K_REQ]
-        if not reqs:
-            raise SystemExit("[오류] --must-play 조건을 만족하는 타임 배치가 없습니다.")
+    pools = []
+    for pred, label in preds:
+        pool = [s for s in ordered if pred(s)][:K_REQ]
+        if not pool:
+            raise SystemExit(f"[오류] '{label}' 조건을 만족하는 타임 배치가 없습니다.")
+        pools.append(pool)
 
     results = []
     seen: set[frozenset] = set()
-    for ps, seg in segs:
-        # 분리 타임이 이미 조건을 만족하면 나머지 두 타임은 자유롭게 고릅니다.
-        pool = kept if (require is None or require(seg)) else reqs
-        for pa, a in pool:
-            if a == seg:
-                continue
-            for pb, b in kept:
-                if b == seg or b == a:
-                    continue
-                trio = (seg, a, b)
-                key = frozenset(trio)
-                if key in seen:
-                    continue
-                seen.add(key)
-                total = ps + pa + pb + global_penalty(trio, players, hist_partner, hist_opponent)
-                results.append((total, trio, seg))
+
+    def consider(trio: tuple) -> None:
+        key = frozenset(trio)
+        if len(key) != 3 or key in seen:
+            return
+        seen.add(key)
+        if not all(any(pred(s) for s in trio) for pred, _ in preds):
+            return
+        total = sum(localpen[s] for s in trio)
+        total += global_penalty(trio, players, hist_partner, hist_opponent)
+        results.append((total, trio))
+
+    # 각 조건마다 한 타임씩 뽑고, 모자라는 자리는 상위 후보로 채웁니다.
+    for combo in product(*pools):
+        base = tuple(dict.fromkeys(combo))
+        need = 3 - len(base)
+        if need == 0:
+            consider(base)
+        elif need == 1:
+            for f in kept:
+                if f not in base:
+                    consider(base + (f,))
+        else:
+            for f1, f2 in combinations(kept, 2):
+                if f1 not in base and f2 not in base:
+                    consider(base + (f1, f2))
+
+    if not results:
+        raise SystemExit("[오류] 모든 조건을 동시에 만족하는 대진이 없습니다.")
 
     results.sort(key=lambda x: x[0])
     out = []
-    used: set[frozenset] = set()
-    for total, trio, seg in results:
-        key = frozenset(trio)
-        if key in used:
-            continue
-        used.add(key)
+    for total, trio in results[:n_candidates]:
+        seg = next(s for s in trio if is_segregated(s, players))
         out.append({"penalty": total, "slots": trio, "seg": seg})
-        if len(out) >= n_candidates:
-            break
     return out
 
 
@@ -592,12 +651,21 @@ def cmd_generate(args) -> None:
     if any(s["date"] == day for s in sessions):
         print(f"[주의] {day} 대진표가 이미 히스토리에 있습니다.\n", file=sys.stderr)
 
-    require = label = None
-    if args.must_play:
-        require, label = make_requirement(args.must_play, players)
-        print(f"[필수 조건 추가] 한 타임은 '{label}' 보장\n")
-    cands = search(players, hist_partner, hist_opponent,
-                   n_candidates=args.top, seed=args.seed, require=require)
+    requires, excludes = [], []
+    for spec in args.must_play:
+        requires.append(make_requirement(spec, players))
+    for spec in args.separate:
+        requires.append(make_separation(spec, players))
+    for spec in args.never:
+        excludes.append(make_exclusion(spec, players))
+    for _, label in requires:
+        print(f"[추가 조건] 한 타임은 '{label}'")
+    for _, label in excludes:
+        print(f"[추가 조건] 모든 타임 '{label}'")
+    if requires or excludes:
+        print()
+    cands = search(players, hist_partner, hist_opponent, n_candidates=args.top,
+                   seed=args.seed, requires=requires, excludes=excludes)
 
     payload = {"date": day, "candidates": []}
     for rank, cand in enumerate(cands, 1):
@@ -795,8 +863,13 @@ def main() -> None:
     g.add_argument("--seg-slot", type=int, default=2, choices=(1, 2, 3),
                    help="실력 분리 타임을 몇 번째 타임에 둘지 (기본 2)")
     g.add_argument("--seed", type=int, help="다른 조합을 뽑고 싶을 때 주는 난수 시드")
-    g.add_argument("--must-play", metavar="이름:남복|여복|혼복",
+    g.add_argument("--must-play", action="append", default=[],
+                   metavar="이름:남복|여복|혼복",
                    help="한 타임은 지정한 사람이 해당 유형 경기를 하도록 보장")
+    g.add_argument("--separate", action="append", default=[], metavar="이름A,이름B",
+                   help="한 타임은 두 사람이 다른 코트에 있도록 보장")
+    g.add_argument("--never", action="append", default=[], metavar="이름:N남M녀",
+                   help="모든 타임에서 그 사람이 해당 성별 구성 코트에 못 들어가게 함")
     g.add_argument("--explain", action="store_true",
                    help="벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다")
     g.set_defaults(func=cmd_generate)
