@@ -34,12 +34,12 @@ SLOT_LABELS = ("20:00-20:50 (몸풀기 포함)", "20:50-21:25", "21:25-22:00")
 
 # ---------------------------------------------------------------- 가중치 설정
 W_BALANCE = 10.0      # 한 코트 안 두 팀의 점수 차 1점당 벌점
-W_GENDER = 6.0        # 팀 성별 구성이 어긋난 코트(예: 남남 vs 남여)마다 벌점
+W_GENDER = 12.0       # 혼복/남복/여복이 아닌 코트마다 벌점 (2남2녀는 혼복이어야 함)
 W_SPREAD = 0.5        # 한 코트 안 최고-최저 실력 차 1점당 벌점(약한 보정)
 W_DUP_PARTNER = 25.0  # 같은 날 같은 파트너 반복 1회당 벌점
 W_DUP_OPPONENT = 3.0  # 같은 날 같은 상대 반복 1회당 벌점
-W_HIST_PARTNER = 5.0  # 과거 파트너 이력 가중치
-W_HIST_COURT = 1.0    # 과거 같은 코트 이력 가중치
+W_HIST_PARTNER = 5.0  # 과거 파트너 이력 가중치 (팀당 1회 적용, 하루 12회)
+W_HIST_COURT = 0.3    # 과거 같은 코트 이력 가중치 (쌍당 1회 적용, 하루 36회)
 HIST_DECAY = 0.75     # 한 회차 거슬러 올라갈 때마다 이력 가중치 감쇠
 HIST_LOOKBACK = 8     # 최근 몇 회차까지 볼지
 SEG_TOLERANCE = 0.5   # '분리 타임' 판정 시 허용하는 실력 겹침 폭
@@ -151,13 +151,13 @@ def gender_type(team: tuple[int, int], players: list[Player]) -> str:
 
 
 def gender_mismatch(c: Court, players: list[Player]) -> float:
-    """0 = 혼복/남복/여복(깔끔), 0.5 = 남복팀 vs 여복팀, 1 = 어긋난 조합."""
+    """0 = 혼복/남복/여복(깔끔), 1 = 그 외.
+
+    '남남 vs 여여'(남자 2명 vs 여자 2명)도 감점 대상입니다. 코트에 2남2녀가
+    있으면 실질적으로 혼복이 되어야 밸런스가 맞기 때문입니다.
+    """
     g1, g2 = gender_type(c[0], players), gender_type(c[1], players)
-    if g1 == g2:
-        return 0.0
-    if {g1, g2} == {"남남", "여여"}:
-        return 0.5
-    return 1.0
+    return 0.0 if g1 == g2 else 1.0
 
 
 def enumerate_slots(players: list[Player]) -> list[Slot]:
@@ -364,13 +364,13 @@ def match_type(c: Court, players: list[Player]) -> str:
         return "여복"
     if g1 == g2 == "남여":
         return "혼복"
-    return f"혼합({g1} vs {g2})"
+    return f"⚠{g1} vs {g2}"
 
 
 def render_analysis(arranged, players: list[Player], hist_partner: Counter, seg: Slot) -> str:
     lines = ["[균형 분석]"]
     for t, (c1, c2) in enumerate(arranged):
-        tag = " ← 실력 분리 타임" if (c1, c2) == seg or (c2, c1) == seg else ""
+        tag = " ← 실력 분리 타임" if is_segregated((c1, c2), players) else ""
         lines.append(f"{t + 1}타임 {SLOT_LABELS[t]}{tag}")
         for label, c in (("K", c1), ("L", c2)):
             s1 = sum(players[i].score for i in c[0])
@@ -421,6 +421,55 @@ def render_analysis(arranged, players: list[Player], hist_partner: Counter, seg:
         per_player.append(f"{p.name}({p.level}): {', '.join(mates)}")
     lines.append("[선수별 파트너] " + " / ".join(per_player))
     return "\n".join(lines)
+
+
+def penalty_breakdown(arranged, players: list[Player],
+                      hist_partner: Counter, hist_court: Counter) -> str:
+    """벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다."""
+    slots = [(c1, c2) for c1, c2 in arranged]
+    bal = gen = spread = 0.0
+    for c1, c2 in slots:
+        for court in (c1, c2):
+            t1, t2 = court
+            s1 = sum(players[i].score for i in t1)
+            s2 = sum(players[i].score for i in t2)
+            bal += W_BALANCE * abs(s1 - s2)
+            gen += W_GENDER * gender_mismatch(court, players)
+            sc = [players[i].score for i in t1 + t2]
+            spread += W_SPREAD * (max(sc) - min(sc))
+
+    partner_c: Counter = Counter()
+    opponent_c: Counter = Counter()
+    hp = hc = 0.0
+    for slot in slots:
+        p, o, cm = slot_pairs(slot)
+        partner_c.update(p)
+        opponent_c.update(o)
+        for pair in p:
+            hp += W_HIST_PARTNER * hist_partner.get(
+                frozenset(players[i].name for i in pair), 0.0)
+        for pair in cm:
+            hc += W_HIST_COURT * hist_court.get(
+                frozenset(players[i].name for i in pair), 0.0)
+    dup_p = W_DUP_PARTNER * sum(c - 1 for c in partner_c.values() if c > 1)
+    dup_o = W_DUP_OPPONENT * sum(c - 1 for c in opponent_c.values() if c > 1)
+
+    rows = [
+        ("코트 내 팀 실력 균형", bal, f"팀 점수 차 1점당 {W_BALANCE:g}  × 코트 6개"),
+        ("같은 날 파트너 중복", dup_p, f"중복 1회당 {W_DUP_PARTNER:g}"),
+        ("혼복·남복·여복 어긋남", gen, f"어긋난 코트당 {W_GENDER:g}  × 코트 6개"),
+        ("최근 파트너 재조합", hp, f"이력 가중치 × {W_HIST_PARTNER:g}  × 팀 12개"),
+        ("같은 날 상대 중복", dup_o, f"중복 1회당 {W_DUP_OPPONENT:g}"),
+        ("최근 같은 코트", hc, f"이력 가중치 × {W_HIST_COURT:g}  × 쌍 36개"),
+        ("코트 내 실력 편차", spread, f"최고-최저 1점당 {W_SPREAD:g}  × 코트 6개"),
+    ]
+    total = sum(r[1] for r in rows)
+    out = ["[벌점 내역]  ※ '실력 분리 타임'은 벌점이 아니라 필수 조건 — 이미 통과"]
+    for name, val, how in sorted(rows, key=lambda r: -r[1]):
+        share = (val / total * 100) if total else 0
+        out.append(f"  {name:<16} {val:6.1f}  ({share:4.1f}%)   {how}")
+    out.append(f"  {'합계':<16} {total:6.1f}")
+    return "\n".join(out)
 
 
 # ------------------------------------------------------------------- 명령어들
@@ -497,6 +546,8 @@ def cmd_generate(args) -> None:
         print(f"===== 후보 {rank} (벌점 {cand['penalty']:.1f}) =====")
         print(plan)
         print(analysis)
+        if args.explain:
+            print(penalty_breakdown(arranged, players, hist_partner, hist_court))
         print()
 
     PENDING_JSON.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -543,6 +594,12 @@ def cmd_history(args) -> None:
     hist_partner, _ = history_weights(sessions)
     print(f"기록된 회차: {len(sessions)}회 ({sessions[0]['date']} ~ {sessions[-1]['date']})")
 
+    levels = load_levels()
+    members = load_members(levels)
+    gender = {n: p.gender for n, p in members.items()}
+    gender["남자게스트"] = "남"
+    gender["여자게스트"] = "여"
+
     print("\n[회차별 점검]")
     for s in sessions:
         cs = s["courts"]
@@ -556,7 +613,22 @@ def cmd_history(args) -> None:
             issues.append(f"인원 {len(everyone)}명")
         if any(x != everyone for x in slots):
             issues.append("타임마다 인원 다름")
-        print(f"  {s['date']}  {'OK' if not issues else '확인필요: ' + ', '.join(issues)}")
+
+        # 2남2녀 코트인데 혼복이 아닌 경우 — 원본 표기가 애매했을 가능성
+        for t1, t2 in cs:
+            four = t1 + t2
+            if sum(1 for x in four if gender.get(x) == "남") != 2:
+                continue
+            g1 = "".join(sorted(gender.get(x, "?") for x in t1))
+            g2 = "".join(sorted(gender.get(x, "?") for x in t2))
+            if not (g1 == g2 == "남여"):
+                issues.append(f"2남2녀인데 혼복 아님({'+'.join(t1)} vs {'+'.join(t2)})")
+
+        dup = [p for p, c in Counter(frozenset(t) for tt in cs for t in tt).items() if c > 1]
+        for p in dup:
+            issues.append(f"파트너 중복({'+'.join(p)})")
+
+        print(f"  {s['date']}  {'OK' if not issues else '확인필요 — ' + ' / '.join(issues)}")
 
     print("\n[최근 파트너 빈도 상위 15쌍]")
     for pair, w in sorted(hist_partner.items(), key=lambda x: -x[1])[:15]:
@@ -576,6 +648,8 @@ def main() -> None:
     g.add_argument("--seg-slot", type=int, default=2, choices=(1, 2, 3),
                    help="실력 분리 타임을 몇 번째 타임에 둘지 (기본 2)")
     g.add_argument("--seed", type=int, help="다른 조합을 뽑고 싶을 때 주는 난수 시드")
+    g.add_argument("--explain", action="store_true",
+                   help="벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다")
     g.set_defaults(func=cmd_generate)
 
     s = sub.add_parser("save", help="확정한 후보를 히스토리에 저장")

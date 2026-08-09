@@ -43,6 +43,7 @@ python3 scripts/matchup.py history
 | `--top N` | 후보 개수 (기본 3) |
 | `--seg-slot 1\|2\|3` | 실력 분리 타임 위치 (기본 2타임) |
 | `--seed N` | 같은 명단으로 다른 조합을 보고 싶을 때 |
+| `--explain` | 벌점이 어느 항목에서 나왔는지 분해해서 표시 |
 
 ## 파일 구조
 
