@@ -26,6 +26,9 @@ python3 scripts/matchup.py generate --date 2026-08-16 \
 # 마음에 안 들면 다른 조합 뽑기
 python3 scripts/matchup.py generate --seed 7 <이름 8개>
 
+# 직접 짠 대진표 채점 (후보와 비교할 때)
+python3 scripts/matchup.py score my-plan.txt <이름 8개>
+
 # 확정 → data/history.md 에 저장
 python3 scripts/matchup.py save --pick 1
 

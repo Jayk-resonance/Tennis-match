@@ -607,6 +607,54 @@ def cmd_save(args) -> None:
     print(f"저장 완료: {payload['date']} 후보 {args.pick} → data/history.md")
 
 
+def plan_to_slots(text: str, players: list[Player]) -> list[Slot]:
+    """대진표 텍스트 → 내부 슬롯 구조. 코트는 K, L 순서로 짝지어 읽습니다."""
+    idx = {p.name: i for i, p in enumerate(players)}
+    courts: list[Court] = []
+    for line in text.splitlines():
+        m = COURT_RE.match(line.strip())
+        if not m:
+            continue
+        teams = parse_court_line(m.group(2))
+        if not teams:
+            raise SystemExit(f"[오류] 코트 줄을 읽을 수 없습니다: {line.strip()}")
+        try:
+            courts.append(tuple(tuple(idx[n] for n in t) for t in teams))
+        except KeyError as e:
+            raise SystemExit(f"[오류] 참석자 명단에 없는 이름입니다: {e.args[0]}")
+    if len(courts) != 6:
+        raise SystemExit(f"[오류] 코트 줄이 6개여야 합니다 (현재 {len(courts)}개).")
+    return [(courts[i], courts[i + 1]) for i in range(0, 6, 2)]
+
+
+def cmd_score(args) -> None:
+    levels = load_levels()
+    members = load_members(levels)
+    sessions = parse_history()
+    hist_partner, hist_opponent = history_weights(sessions)
+
+    players = resolve_players(args.names, members, args.guest, levels)
+    if len(players) != 8:
+        raise SystemExit(f"[오류] 참석자는 8명이어야 합니다 (현재 {len(players)}명).")
+
+    text = sys.stdin.read() if args.plan == "-" else Path(args.plan).read_text(encoding="utf-8")
+    slots = plan_to_slots(text, players)
+    arranged = [(c1, c2) for c1, c2 in slots]
+
+    total = sum(local_penalty(s, players) for s in slots)
+    total += global_penalty(tuple(slots), players, hist_partner, hist_opponent)
+
+    segs = [i + 1 for i, s in enumerate(slots) if is_segregated(s, players)]
+    print(f"===== 입력한 대진 (벌점 {total:.1f}) =====")
+    print(render_plan(arranged, players, args.date or "입력 대진"))
+    print(render_analysis(arranged, players, hist_partner, hist_opponent, slots[0]))
+    print(penalty_breakdown(arranged, players, hist_partner, hist_opponent))
+    if segs:
+        print(f"[필수 조건] 실력 분리 타임 {segs}타임 — 통과")
+    else:
+        print("[필수 조건] ⚠ 실력 분리 타임이 없습니다 — 미통과")
+
+
 def cmd_members(args) -> None:
     levels = load_levels()
     members = load_members(levels)
@@ -682,6 +730,13 @@ def main() -> None:
     g.add_argument("--explain", action="store_true",
                    help="벌점이 어느 항목에서 나왔는지 항목별로 분해해서 보여줍니다")
     g.set_defaults(func=cmd_generate)
+
+    sc = sub.add_parser("score", help="직접 짠 대진표를 채점")
+    sc.add_argument("plan", help="대진표 텍스트 파일 경로 ('-' 이면 표준입력)")
+    sc.add_argument("names", nargs="+", help="참석자 이름 8명")
+    sc.add_argument("--guest", action="append", default=[], metavar="이름:성별:레벨")
+    sc.add_argument("--date", help="표시용 날짜")
+    sc.set_defaults(func=cmd_score)
 
     s = sub.add_parser("save", help="확정한 후보를 히스토리에 저장")
     s.add_argument("--pick", type=int, default=1, help="확정할 후보 번호 (기본 1)")
