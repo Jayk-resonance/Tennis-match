@@ -34,6 +34,7 @@ python3 scripts/matchup.py generate --date YYYY-MM-DD <이름 8개> [--guest "�
 |-----------|------|
 | "한 타임은 OO가 남복 치게 해줘" | `--must-play "OO:남복"` |
 | "OO와 XX를 한 타임은 떼어줘" | `--separate "OO,XX"` |
+| "마지막 타임엔 OO와 XX를 떼어줘" | `--separate "OO,XX@3"` |
 | "OO는 여자 셋 사이에 넣지 마" | `--never "OO:1남3녀"` |
 
 조건이 불가능하면 생성기가 오류로 알려줍니다. 조건을 하나씩 더해가며 벌점을 비교해

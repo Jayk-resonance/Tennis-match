@@ -19,7 +19,8 @@ import sys
 from collections import Counter
 from dataclasses import dataclass
 from datetime import date, timedelta
-from itertools import combinations, product
+from heapq import heappush, heapreplace
+from itertools import combinations, permutations
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -291,7 +292,16 @@ def make_exclusion(spec: str, players: list[Player]):
 
 
 def make_separation(spec: str, players: list[Player]):
-    """'김예은,조영혜' → 두 사람이 서로 다른 코트인 타임."""
+    """'김예은,조영혜' → 두 사람이 다른 코트인 타임이 하나 이상.
+
+    '이채윤,조영혜@3' 처럼 `@타임번호`를 붙이면 **그 타임에** 떨어뜨립니다.
+    """
+    pin = None
+    if "@" in spec:
+        spec, pos = spec.rsplit("@", 1)
+        if pos not in ("1", "2", "3"):
+            raise SystemExit(f"[오류] 타임 번호는 1/2/3 중 하나여야 합니다: @{pos}")
+        pin = int(pos)
     parts = [x.strip() for x in spec.split(",")]
     if len(parts) != 2:
         raise SystemExit(f"[오류] --separate 형식은 '이름A,이름B' 입니다: {spec}")
@@ -305,7 +315,8 @@ def make_separation(spec: str, players: list[Player]):
 
     def ok(slot: Slot) -> bool:
         return not any({a, b} <= set(c[0] + c[1]) for c in slot)
-    return ok, f"{parts[0]}·{parts[1]} 다른 코트"
+    where = f"{pin}타임" if pin else "한 타임 이상"
+    return ok, f"{parts[0]}·{parts[1]} 다른 코트({where})", pin
 
 
 def search(
@@ -316,6 +327,8 @@ def search(
     seed: int | None = None,
     requires: list = (),
     excludes: list = (),
+    pins: list = (),
+    seg_slot: int = 2,
 ) -> list[dict]:
     """3타임을 고릅니다.
 
@@ -337,64 +350,79 @@ def search(
         localpen[slot] = pen
     ordered = sorted(all_slots, key=lambda s: localpen[s])
 
-    kept = ordered[:K_LOCAL]
     preds = [(lambda s: is_segregated(s, players), "실력 분리 타임")] + list(requires)
 
-    pools = []
+    # 후보 풀: 벌점 상위 + 각 조건을 만족하는 타임 (조건별 후보를 반드시 남김)
+    pool_set = set(ordered[:K_LOCAL])
     for pred, label in preds:
-        pool = [s for s in ordered if pred(s)][:K_REQ]
-        if not pool:
+        hits = [s for s in ordered if pred(s)]
+        if not hits:
             raise SystemExit(f"[오류] '{label}' 조건을 만족하는 타임 배치가 없습니다.")
-        pools.append(pool)
+        pool_set.update(hits[:K_REQ])
+    pool = sorted(pool_set, key=lambda s: localpen[s])
+    lp = [localpen[s] for s in pool]
 
-    results = []
-    seen: set[frozenset] = set()
+    # 조건 충족 여부를 비트마스크로 미리 계산해 두고 3개 조합을 훑습니다.
+    full = (1 << len(preds)) - 1
+    masks = [sum(1 << b for b, (pred, _) in enumerate(preds) if pred(s)) for s in pool]
 
-    def consider(trio: tuple) -> None:
-        key = frozenset(trio)
-        if len(key) != 3 or key in seen:
-            return
-        seen.add(key)
-        if not all(any(pred(s) for s in trio) for pred, _ in preds):
-            return
-        total = sum(localpen[s] for s in trio)
-        total += global_penalty(trio, players, hist_partner, hist_opponent)
-        results.append((total, trio))
+    n = len(pool)
+    best: list = []          # (-total, tie, trio) 최대힙 — 상위 n_candidates 유지
+    bound = float("inf")     # 현재 n번째 후보의 벌점 (가지치기 기준)
+    tie = 0
+    for i in range(n):
+        if 3 * lp[i] > bound:
+            break
+        for j in range(i + 1, n):
+            if lp[i] + 2 * lp[j] > bound:
+                break
+            mij = masks[i] | masks[j]
+            for k in range(j + 1, n):
+                low = lp[i] + lp[j] + lp[k]
+                if low > bound:      # 이후 k는 벌점이 더 크므로 중단
+                    break
+                if mij | masks[k] != full:
+                    continue
+                trio = (pool[i], pool[j], pool[k])
+                if pins and not valid_orderings(trio, players, seg_slot, pins):
+                    continue
+                total = low + global_penalty(trio, players, hist_partner, hist_opponent)
+                tie += 1
+                if len(best) < n_candidates:
+                    heappush(best, (-total, tie, trio))
+                elif total < -best[0][0]:
+                    heapreplace(best, (-total, tie, trio))
+                if len(best) == n_candidates:
+                    bound = -best[0][0]
 
-    # 각 조건마다 한 타임씩 뽑고, 모자라는 자리는 상위 후보로 채웁니다.
-    for combo in product(*pools):
-        base = tuple(dict.fromkeys(combo))
-        need = 3 - len(base)
-        if need == 0:
-            consider(base)
-        elif need == 1:
-            for f in kept:
-                if f not in base:
-                    consider(base + (f,))
-        else:
-            for f1, f2 in combinations(kept, 2):
-                if f1 not in base and f2 not in base:
-                    consider(base + (f1, f2))
-
-    if not results:
+    if not best:
         raise SystemExit("[오류] 모든 조건을 동시에 만족하는 대진이 없습니다.")
 
-    results.sort(key=lambda x: x[0])
     out = []
-    for total, trio in results[:n_candidates]:
+    for neg, _, trio in sorted(best, key=lambda x: -x[0]):
         seg = next(s for s in trio if is_segregated(s, players))
-        out.append({"penalty": total, "slots": trio, "seg": seg})
+        out.append({"penalty": -neg, "slots": trio, "seg": seg})
     return out
 
 
 # ------------------------------------------------------------ 순서 / 코트 배정
-def order_slots(cand: dict, players: list[Player], seg_slot: int) -> list[Slot]:
-    seg = cand["seg"]
-    others = [s for s in cand["slots"] if s != seg]
-    others.sort(key=lambda s: local_penalty(s, players))
-    ordered = others[:]
-    ordered.insert(min(max(seg_slot - 1, 0), 2), seg)
-    return ordered
+def valid_orderings(trio, players: list[Player], seg_slot: int, pins=()) -> list[tuple]:
+    """분리 타임을 지정 위치에 두고, 타임 지정 조건까지 맞는 배열들."""
+    out = []
+    for perm in permutations(trio):
+        if not is_segregated(perm[seg_slot - 1], players):
+            continue
+        if all(pred(perm[pos - 1]) for pos, pred in pins):
+            out.append(perm)
+    return out
+
+
+def order_slots(cand: dict, players: list[Player], seg_slot: int, pins=()) -> list[Slot]:
+    opts = valid_orderings(cand["slots"], players, seg_slot, pins)
+    if not opts:
+        raise SystemExit("[오류] 타임 순서 조건을 만족하도록 배열할 수 없습니다.")
+    # 몸풀기 타임(1타임)이 가장 안정적인 배열을 고릅니다.
+    return list(min(opts, key=lambda p: [local_penalty(s, players) for s in p]))
 
 
 def assign_courts(ordered: list[Slot], players: list[Player]) -> list[tuple[Court, Court]]:
@@ -651,11 +679,14 @@ def cmd_generate(args) -> None:
     if any(s["date"] == day for s in sessions):
         print(f"[주의] {day} 대진표가 이미 히스토리에 있습니다.\n", file=sys.stderr)
 
-    requires, excludes = [], []
+    requires, excludes, pins = [], [], []
     for spec in args.must_play:
         requires.append(make_requirement(spec, players))
     for spec in args.separate:
-        requires.append(make_separation(spec, players))
+        pred, label, pin = make_separation(spec, players)
+        requires.append((pred, label))
+        if pin:
+            pins.append((pin, pred))
     for spec in args.never:
         excludes.append(make_exclusion(spec, players))
     for _, label in requires:
@@ -665,11 +696,12 @@ def cmd_generate(args) -> None:
     if requires or excludes:
         print()
     cands = search(players, hist_partner, hist_opponent, n_candidates=args.top,
-                   seed=args.seed, requires=requires, excludes=excludes)
+                   seed=args.seed, requires=requires, excludes=excludes,
+                   pins=pins, seg_slot=args.seg_slot)
 
     payload = {"date": day, "candidates": []}
     for rank, cand in enumerate(cands, 1):
-        ordered = order_slots(cand, players, args.seg_slot)
+        ordered = order_slots(cand, players, args.seg_slot, pins)
         arranged = assign_courts(ordered, players)
         plan = render_plan(arranged, players, day)
         analysis = render_analysis(arranged, players, hist_partner,
@@ -866,8 +898,8 @@ def main() -> None:
     g.add_argument("--must-play", action="append", default=[],
                    metavar="이름:남복|여복|혼복",
                    help="한 타임은 지정한 사람이 해당 유형 경기를 하도록 보장")
-    g.add_argument("--separate", action="append", default=[], metavar="이름A,이름B",
-                   help="한 타임은 두 사람이 다른 코트에 있도록 보장")
+    g.add_argument("--separate", action="append", default=[], metavar="이름A,이름B[@타임]",
+                   help="두 사람을 다른 코트에 배치. @1/@2/@3 을 붙이면 그 타임에 고정")
     g.add_argument("--never", action="append", default=[], metavar="이름:N남M녀",
                    help="모든 타임에서 그 사람이 해당 성별 구성 코트에 못 들어가게 함")
     g.add_argument("--explain", action="store_true",
