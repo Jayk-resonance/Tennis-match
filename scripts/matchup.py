@@ -587,24 +587,50 @@ def cmd_generate(args) -> None:
 
 
 def cmd_save(args) -> None:
-    if not PENDING_JSON.exists():
-        raise SystemExit("[오류] 확정 대기 중인 대진표가 없습니다. 먼저 generate를 실행하세요.")
-    payload = json.loads(PENDING_JSON.read_text(encoding="utf-8"))
-    picks = {c["rank"]: c for c in payload["candidates"]}
-    if args.pick not in picks:
-        raise SystemExit(f"[오류] 후보 {args.pick}이(가) 없습니다. 가능한 값: {sorted(picks)}")
+    if args.from_file:
+        if not args.date:
+            raise SystemExit("[오류] --from 을 쓸 때는 --date 도 지정해야 합니다.")
+        raw = (sys.stdin.read() if args.from_file == "-"
+               else Path(args.from_file).read_text(encoding="utf-8"))
+        lines = [f"## {args.date} 코트운영", ""]
+        n_courts = 0
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if COURT_RE.match(line):
+                if not parse_court_line(COURT_RE.match(line).group(2)):
+                    raise SystemExit(f"[오류] 코트 줄을 읽을 수 없습니다: {line}")
+                n_courts += 1
+            lines.append(line)
+            if line.startswith("L코트"):
+                lines.append("")
+        if n_courts != 6:
+            raise SystemExit(f"[오류] 코트 줄이 6개여야 합니다 (현재 {n_courts}개).")
+        day, plan = args.date, "\n".join(lines).rstrip() + "\n"
+        label = "직접 지정한 대진"
+    else:
+        if not PENDING_JSON.exists():
+            raise SystemExit("[오류] 확정 대기 중인 대진표가 없습니다. 먼저 generate를 실행하세요.")
+        payload = json.loads(PENDING_JSON.read_text(encoding="utf-8"))
+        picks = {c["rank"]: c for c in payload["candidates"]}
+        if args.pick not in picks:
+            raise SystemExit(f"[오류] 후보 {args.pick}이(가) 없습니다. 가능한 값: {sorted(picks)}")
+        day, plan = payload["date"], picks[args.pick]["plan"]
+        label = f"후보 {args.pick}"
 
     sessions = parse_history()
-    if any(s["date"] == payload["date"] for s in sessions):
+    if any(s["date"] == day for s in sessions):
         raise SystemExit(
-            f"[오류] {payload['date']} 대진표가 이미 history.md에 있습니다. "
+            f"[오류] {day} 대진표가 이미 history.md에 있습니다. "
             "덮어쓰려면 해당 항목을 먼저 지우세요."
         )
 
     text = HISTORY_MD.read_text(encoding="utf-8").rstrip() + "\n\n"
-    HISTORY_MD.write_text(text + picks[args.pick]["plan"], encoding="utf-8")
-    PENDING_JSON.unlink()
-    print(f"저장 완료: {payload['date']} 후보 {args.pick} → data/history.md")
+    HISTORY_MD.write_text(text + plan, encoding="utf-8")
+    if PENDING_JSON.exists():
+        PENDING_JSON.unlink()
+    print(f"저장 완료: {day} {label} → data/history.md")
 
 
 def plan_to_slots(text: str, players: list[Player]) -> list[Slot]:
@@ -738,8 +764,11 @@ def main() -> None:
     sc.add_argument("--date", help="표시용 날짜")
     sc.set_defaults(func=cmd_score)
 
-    s = sub.add_parser("save", help="확정한 후보를 히스토리에 저장")
+    s = sub.add_parser("save", help="확정한 대진표를 히스토리에 저장")
     s.add_argument("--pick", type=int, default=1, help="확정할 후보 번호 (기본 1)")
+    s.add_argument("--from", dest="from_file", metavar="파일",
+                   help="후보 대신 직접 짠 대진표 파일을 저장 ('-' 이면 표준입력). --date 필요")
+    s.add_argument("--date", help="--from 과 함께 쓰는 대진 날짜 (YYYY-MM-DD)")
     s.set_defaults(func=cmd_save)
 
     m = sub.add_parser("members", help="회원 명단 출력")
