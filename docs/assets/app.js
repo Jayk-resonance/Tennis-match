@@ -101,12 +101,9 @@ function nextAvailableSunday(sessions) {
 
 function formatDate(value) {
   const [year, month, day] = value.split("-").map(Number);
-  return new Intl.DateTimeFormat("ko-KR", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(new Date(year, month - 1, day, 12));
+  const weekdays = ["일", "월", "화", "수", "목", "금", "토"];
+  const weekday = weekdays[new Date(year, month - 1, day, 12).getDay()];
+  return `${year}.${month}.${day}(${weekday})`;
 }
 
 function selectedPlayers() {
