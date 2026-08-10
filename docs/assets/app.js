@@ -150,14 +150,22 @@ function renderSelected() {
   const players = selectedPlayers();
   $("#selectedCount").textContent = String(players.length);
   $("#generateButton").disabled = players.length !== 8;
+  const participantHero = $("#participantsView .participant-hero");
+  participantHero.classList.toggle("has-selection", players.length > 0);
+  participantHero.classList.toggle("selection-complete", players.length === 8);
   $("#selectedPlayers").innerHTML = players.length
     ? players
         .map(
           (player) => `
-            <span class="selected-chip">
-              ${escapeHtml(player.name)} · ${escapeHtml(player.level)}
-              <button type="button" data-remove-player="${escapeHtml(player.id)}" aria-label="${escapeHtml(player.name)} 선택 해제">×</button>
-            </span>`,
+            <button
+              class="selected-chip"
+              type="button"
+              data-remove-player="${escapeHtml(player.id)}"
+              aria-label="${escapeHtml(player.name)} 선택 해제"
+            >
+              <span>${escapeHtml(player.name)} · ${escapeHtml(player.level)}</span>
+              <span class="chip-remove" aria-hidden="true">×</span>
+            </button>`,
         )
         .join("")
     : '<span class="member-empty">아래 명단에서 참석자를 선택하세요.</span>';
@@ -357,23 +365,25 @@ function renderEvaluation(evaluation, evaluations) {
     <div class="evaluation-main">
       <span class="eyebrow">후보 ${state.activeCandidate + 1} 간단 평가</span>
       <h2>${escapeHtml(evaluation.headline)}</h2>
-      <p>${difference === 0 ? "현재 후보 중 가장 낮은 벌점입니다." : `현재 최상 후보보다 벌점이 ${formatScore(difference)} 높습니다.`}</p>
+      <p>${difference === 0 ? "세 후보 중 가장 추천하는 조합입니다." : `추천 후보보다 종합 벌점이 ${formatScore(difference)} 높습니다.`}</p>
     </div>
-    <div class="penalty-score">
-      <strong>${formatScore(metrics.totalPenalty)}</strong>
-      <span>종합 벌점 · 낮을수록 좋음</span>
+    <div class="candidate-recommendation ${difference === 0 ? "best" : ""}">
+      <strong>${difference === 0 ? "추천" : `+${formatScore(difference)}`}</strong>
+      <span>${difference === 0 ? "현재 최상" : "추천 대비"}</span>
     </div>
-    <div class="metric-row">
+    <div class="metric-row metric-primary">
       <span class="metric-badge ${validationClass}">${escapeHtml(evaluation.validation.reason)}</span>
       <span class="metric-badge ${metricClass(metrics.maxTeamDifference, 1.5, 2.5)}">최대 팀 차 ${formatScore(metrics.maxTeamDifference)}</span>
       <span class="metric-badge ${metricClass(metrics.heavyCourtCount)}">일방적 코트 ${metrics.heavyCourtCount}</span>
-      <span class="metric-badge ${metricClass(metrics.duplicatePartnerCount)}">파트너 중복 ${metrics.duplicatePartnerCount}</span>
-      <span class="metric-badge ${metricClass(metrics.duplicateOpponentCount, 5, 9)}">상대 중복 ${metrics.duplicateOpponentCount}</span>
-      <span class="metric-badge ${metricClass(metrics.genderMismatchCount)}">성별 주의 ${metrics.genderMismatchCount}</span>
-      <span class="metric-badge">최근 파트너 ${metrics.reusedPartnerCount}쌍 · 상대 ${metrics.reusedOpponentCount}쌍</span>
     </div>
     <details class="breakdown">
-      <summary>벌점 항목별 보기</summary>
+      <summary>상세 평가 · 종합 벌점 ${formatScore(metrics.totalPenalty)}</summary>
+      <div class="metric-row metric-secondary">
+        <span class="metric-badge ${metricClass(metrics.duplicatePartnerCount)}">파트너 중복 ${metrics.duplicatePartnerCount}</span>
+        <span class="metric-badge ${metricClass(metrics.duplicateOpponentCount, 5, 9)}">상대 중복 ${metrics.duplicateOpponentCount}</span>
+        <span class="metric-badge ${metricClass(metrics.genderMismatchCount)}">성별 주의 ${metrics.genderMismatchCount}</span>
+        <span class="metric-badge">최근 파트너 ${metrics.reusedPartnerCount}쌍 · 상대 ${metrics.reusedOpponentCount}쌍</span>
+      </div>
       <div class="breakdown-grid">${breakdown}</div>
     </details>`;
 }
@@ -568,6 +578,7 @@ function renderHistory() {
   const renderCards = (items, archived = false) => items
     .map((session) => {
       const courts = sessionCourts(session);
+      const participantCount = session.participants?.length || new Set(courts.flat(2)).size;
       const slots = [0, 1, 2]
         .map((slotIndex) => {
           const pair = courts.slice(slotIndex * 2, slotIndex * 2 + 2);
@@ -589,15 +600,23 @@ function renderHistory() {
           <div class="history-head">
             <div>
               <h2>${escapeHtml(formatDate(session.date))}</h2>
-              <p>${escapeHtml(session.updatedBy ?? (session.status === "imported" ? "기존 history.md" : "확정 기록"))} · 버전 ${session.revision ?? 1}</p>
+              <p>${participantCount}명 · ${escapeHtml(session.updatedBy ?? (session.status === "imported" ? "기존 history.md" : "확정 기록"))} · 버전 ${session.revision ?? 1}</p>
             </div>
             <div class="history-actions">
-              <button class="icon-button" data-history-copy="${session.date}" type="button">복사</button>
-              ${archived ? "" : `<button class="icon-button" data-history-reuse="${session.date}" type="button">참석자 재사용</button>`}
-              <button class="icon-button" data-history-archive="${session.date}" type="button">${archived ? "복원" : "보관"}</button>
+              ${archived ? "" : `<button class="secondary-button history-reuse" data-history-reuse="${session.date}" type="button">참석자 재사용</button>`}
+              <details class="history-menu">
+                <summary aria-label="${escapeHtml(formatDate(session.date))} 추가 작업">···</summary>
+                <div class="history-menu-popover">
+                  <button class="icon-button" data-history-copy="${session.date}" type="button">대진 복사</button>
+                  <button class="icon-button" data-history-archive="${session.date}" type="button">${archived ? "현재 기록으로 복원" : "대진 보관"}</button>
+                </div>
+              </details>
             </div>
           </div>
-          <div class="history-preview">${slots}</div>
+          <details class="history-details">
+            <summary>상세 대진 보기</summary>
+            <div class="history-preview">${slots}</div>
+          </details>
         </article>`;
     })
     .join("");
