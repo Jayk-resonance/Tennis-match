@@ -172,22 +172,6 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   background: var(--surface);
 }
 .field-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
-.selected-players { grid-column: 1 / -1; display: flex; min-height: 34px; flex-wrap: wrap; gap: 6px; }
-.selected-chip {
-  min-height: 40px;
-  border: 1px solid rgba(100, 37, 254, 0.16);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 7px 5px 10px;
-  border-radius: var(--r-pill);
-  color: var(--primary-ink);
-  background: rgba(255, 255, 255, 0.76);
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-}
-.chip-remove { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-tint); line-height: 1; }
 .selection-summary { margin-top: 10px; padding: 12px; border: 1px solid rgba(100, 37, 254, 0.13); border-radius: var(--r-md); background: rgba(100, 37, 254, 0.035); }
 .selection-summary-heading { margin-bottom: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .selection-summary-heading strong { font-size: 12px; }
@@ -463,18 +447,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .content-wrap { max-width: 100%; padding: 15px 12px 36px; }
   .hero { padding: 17px 16px; }
   .participant-hero { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; }
-  .participant-hero:not(.has-selection) .selected-players { display: none; }
   .participant-hero.has-selection .hero-copy p { display: none; }
   .hero-copy h1, .page-heading h1 { font-size: 24px; }
   .hero-copy p, .page-heading p { font-size: 12px; }
   .selection-meter { min-width: 78px; padding: 10px 8px; }
   .selection-meter strong { font-size: 31px; }
-  .hero-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+  .hero-controls { grid-template-columns: minmax(0, 1fr); gap: 10px; }
   .hero-action { width: 100%; }
   .card { padding: 16px 14px; }
-  .selected-players { min-height: 44px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
-  .selected-players::-webkit-scrollbar { display: none; }
-  .selected-chip { min-height: 44px; flex: 0 0 auto; }
   .section-heading h2 { font-size: 17px; }
   .member-card .section-heading { display: block; }
   .member-card .section-actions { margin-top: 12px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
