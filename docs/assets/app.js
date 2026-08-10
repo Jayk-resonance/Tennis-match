@@ -353,6 +353,8 @@ worker.addEventListener("message", ({ data }) => {
 async function generate({ regenerate = false } = {}) {
   const players = selectedPlayers();
   if (players.length !== 8) return showToast("참석자 8명을 먼저 선택해주세요.");
+  const segregatedSlots = $$("input[name='segregatedSlot']:checked").map(({ value }) => Number(value));
+  if (!segregatedSlots.length) return showToast("실력 분리 타임을 한 개 이상 선택해주세요.");
   state.seed = regenerate ? (state.seed ?? 0) + 1 : null;
   setLoading(true);
   try {
@@ -361,7 +363,7 @@ async function generate({ regenerate = false } = {}) {
       sessions: activeSessions(),
       candidateCount: 3,
       seed: state.seed,
-      segregatedSlot: Number($("#segregatedSlot").value),
+      segregatedSlots,
     });
     state.generatedPlayers = clone(players);
     state.candidates = candidates.map((candidate) => ({ ...candidate, undo: [], edited: false }));
