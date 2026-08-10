@@ -181,10 +181,25 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   box-sizing: border-box;
   border: 0;
   border-radius: 0;
-  padding: 0 12px;
+  padding: 0 16px;
   color: var(--ink);
   background: transparent;
   font: inherit;
+  line-height: 1.2;
+  text-align: left;
+}
+.field-control select { text-align-last: left; }
+.field-control input[type="date"]::-webkit-date-and-time-value {
+  min-height: 100%;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: left;
+}
+.field-control input[type="date"]::-webkit-datetime-edit {
+  padding: 0;
+  text-align: left;
 }
 .field-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .selection-summary { margin-top: 10px; padding: 12px; border: 1px solid rgba(100, 37, 254, 0.13); border-radius: var(--r-md); background: rgba(100, 37, 254, 0.035); }
