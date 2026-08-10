@@ -11,7 +11,7 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
     />
-    <link rel="stylesheet" href="./assets/style.css?v=20260810-3" />
+    <link rel="stylesheet" href="./assets/style.css?v=20260810-4" />
   </head>
   <body>
     <div class="app-layout">
@@ -77,11 +77,12 @@
                 <label class="field compact">
                   <span>실력 분리 타임</span>
                   <select id="segregatedSlot">
-                    <option value="1">1타임</option>
-                    <option value="2" selected>2타임</option>
-                    <option value="3">3타임</option>
+                    <option value="1">1번째</option>
+                    <option value="2" selected>2번째</option>
+                    <option value="3">3번째</option>
                   </select>
                 </label>
+                <p class="field-note">선택한 순서에는 실력이 비슷한 선수끼리 경기하도록 배치해요.</p>
               </div>
               <div id="selectedPlayers" class="selected-players" aria-label="선택된 참석자"></div>
               <button id="generateButton" class="primary-button hero-action" type="button" disabled>
@@ -101,6 +102,21 @@
                   <button id="openGuestButton" class="secondary-button" type="button">+ 게스트</button>
                 </div>
               </div>
+              <form id="bulkSelectForm" class="bulk-select">
+                <label for="bulkSelectInput">이름으로 한 번에 선택</label>
+                <div class="bulk-select-controls">
+                  <input
+                    id="bulkSelectInput"
+                    type="text"
+                    placeholder="예: 김동원 조재윤 신명수 진혜주"
+                    autocomplete="off"
+                    aria-describedby="bulkSelectFeedback"
+                  />
+                  <button class="secondary-button" type="submit">이름 선택</button>
+                </div>
+                <small id="bulkSelectFeedback">띄어쓰기로 이름을 구분한 뒤 버튼을 누르거나 Enter를 누르세요.</small>
+              </form>
+              <div id="selectionSummary" class="selection-summary hidden" aria-live="polite"></div>
               <label class="search-field">
                 <span class="sr-only">회원 검색</span>
                 <span aria-hidden="true">⌕</span>
@@ -276,6 +292,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./assets/app.js?v=20260810-3"></script>
+    <script type="module" src="./assets/app.js?v=20260810-4"></script>
   </body>
 </html>

@@ -6,7 +6,7 @@ import {
   scheduleToText,
   swapPlayers,
 } from "./matchup-core.js";
-import { ConflictError, createStore } from "./store.js?v=20260810-2";
+import { ConflictError, createStore } from "./store.js?v=20260810-3";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -146,6 +146,48 @@ function updateModeUi() {
   $("#signOutButton").classList.toggle("hidden", !cloud || !state.user);
 }
 
+function renderSelectionSummary(players) {
+  const container = $("#selectionSummary");
+  if (players.length !== 8) {
+    container.classList.add("hidden");
+    container.innerHTML = "";
+    return;
+  }
+  const genders = ["남", "여"];
+  const levelGroups = ["A", "B", "C"];
+  const rows = genders
+    .map(
+      (gender) => `
+        <tr>
+          <th scope="row">${gender}</th>
+          ${levelGroups
+            .map((level) => {
+              const matches = players.filter(
+                (player) => player.gender === gender && String(player.level).toUpperCase().startsWith(level),
+              );
+              return `
+                <td>
+                  <strong>${matches.length}명</strong>
+                  <span>${matches.length ? matches.map((player) => escapeHtml(player.name)).join(" · ") : "-"}</span>
+                </td>`;
+            })
+            .join("")}
+        </tr>`,
+    )
+    .join("");
+  container.innerHTML = `
+    <div class="selection-summary-heading">
+      <strong>선택 요약</strong><span>성별 × 실력 등급</span>
+    </div>
+    <div class="selection-summary-scroll">
+      <table>
+        <thead><tr><th scope="col">성별</th>${levelGroups.map((level) => `<th scope="col">${level}</th>`).join("")}</tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  container.classList.remove("hidden");
+}
+
 function renderSelected() {
   const players = selectedPlayers();
   $("#selectedCount").textContent = String(players.length);
@@ -169,6 +211,7 @@ function renderSelected() {
         )
         .join("")
     : '<span class="member-empty">아래 명단에서 참석자를 선택하세요.</span>';
+  renderSelectionSummary(players);
 }
 
 function renderMembers() {
@@ -259,6 +302,50 @@ function removePlayer(id) {
   renderMembers();
 }
 
+function selectMembersByName(event) {
+  event.preventDefault();
+  const input = $("#bulkSelectInput");
+  const feedback = $("#bulkSelectFeedback");
+  const names = [...new Set(input.value.trim().split(/\s+/).filter(Boolean))];
+  if (!names.length) {
+    feedback.textContent = "선택할 이름을 띄어쓰기로 입력해주세요.";
+    input.focus();
+    return;
+  }
+
+  const activeMembers = state.members.filter((member) => member.active !== false);
+  const added = [];
+  const alreadySelected = [];
+  const missing = [];
+  const skipped = [];
+  names.forEach((name) => {
+    const member = activeMembers.find((item) => item.name === name);
+    if (!member) {
+      missing.push(name);
+      return;
+    }
+    if (state.selectedIds.includes(member.id)) {
+      alreadySelected.push(name);
+      return;
+    }
+    if (selectedPlayers().length >= 8) {
+      skipped.push(name);
+      return;
+    }
+    state.selectedIds.push(member.id);
+    added.push(name);
+  });
+  renderMembers();
+
+  const messages = [];
+  if (added.length) messages.push(`${added.length}명을 선택했습니다.`);
+  if (alreadySelected.length) messages.push(`이미 선택됨: ${alreadySelected.join(", ")}`);
+  if (missing.length) messages.push(`명단에서 찾지 못함: ${missing.join(", ")}`);
+  if (skipped.length) messages.push(`8명 제한으로 제외: ${skipped.join(", ")}`);
+  feedback.textContent = messages.join(" ") || "선택 상태가 바뀌지 않았습니다.";
+  if (added.length) showToast(`${selectedPlayers().length}명의 참석자가 선택되었습니다.`);
+}
+
 function populateLevels() {
   const levels = Object.entries(state.seedData.levels);
   $("#guestLevel").innerHTML = levels
@@ -325,6 +412,9 @@ function renderCandidateTabs(evaluations) {
   $("#candidateTabs").innerHTML = evaluations
     .map((evaluation, index) => {
       const difference = evaluation.metrics.totalPenalty - bestPenalty;
+      const rank = 1 + evaluations.filter(
+        (item) => item.metrics.totalPenalty < evaluation.metrics.totalPenalty,
+      ).length;
       const candidate = state.candidates[index];
       return `
         <button
@@ -335,7 +425,7 @@ function renderCandidateTabs(evaluations) {
           aria-selected="${index === state.activeCandidate}"
         >
           <span>후보 ${index + 1}${candidate.edited ? " · 수정됨" : ""}</span>
-          <small>${difference === 0 ? "공동 최상" : `최상 대비 +${formatScore(difference)}`}</small>
+          <small>${difference === 0 ? "추천 · 낮은 벌점" : `${rank}순위 · 낮은 벌점 순`}</small>
         </button>`;
     })
     .join("");
@@ -351,6 +441,7 @@ function renderEvaluation(evaluation, evaluations) {
   const metrics = evaluation.metrics;
   const bestPenalty = Math.min(...evaluations.map((item) => item.metrics.totalPenalty));
   const difference = metrics.totalPenalty - bestPenalty;
+  const rank = 1 + evaluations.filter((item) => item.metrics.totalPenalty < metrics.totalPenalty).length;
   const validationClass = evaluation.validation.valid ? "ok" : "danger";
   const breakdown = Object.entries(evaluation.breakdown)
     .sort((left, right) => right[1] - left[1])
@@ -365,11 +456,11 @@ function renderEvaluation(evaluation, evaluations) {
     <div class="evaluation-main">
       <span class="eyebrow">후보 ${state.activeCandidate + 1} 간단 평가</span>
       <h2>${escapeHtml(evaluation.headline)}</h2>
-      <p>${difference === 0 ? "세 후보 중 가장 추천하는 조합입니다." : `추천 후보보다 종합 벌점이 ${formatScore(difference)} 높습니다.`}</p>
+      <p>${difference === 0 ? "세 후보 중 벌점이 가장 낮은 추천 조합입니다." : `추천 후보보다 벌점이 ${formatScore(difference)} 더 많습니다.`}</p>
     </div>
     <div class="candidate-recommendation ${difference === 0 ? "best" : ""}">
-      <strong>${difference === 0 ? "추천" : `+${formatScore(difference)}`}</strong>
-      <span>${difference === 0 ? "현재 최상" : "추천 대비"}</span>
+      <strong>${difference === 0 ? "추천" : `${rank}순위`}</strong>
+      <span>벌점 낮은 순</span>
     </div>
     <div class="metric-row metric-primary">
       <span class="metric-badge ${validationClass}">${escapeHtml(evaluation.validation.reason)}</span>
@@ -377,7 +468,7 @@ function renderEvaluation(evaluation, evaluations) {
       <span class="metric-badge ${metricClass(metrics.heavyCourtCount)}">일방적 코트 ${metrics.heavyCourtCount}</span>
     </div>
     <details class="breakdown">
-      <summary>상세 평가 · 종합 벌점 ${formatScore(metrics.totalPenalty)}</summary>
+      <summary>상세 평가 · 벌점 ${formatScore(metrics.totalPenalty)} (낮을수록 좋음)</summary>
       <div class="metric-row metric-secondary">
         <span class="metric-badge ${metricClass(metrics.duplicatePartnerCount)}">파트너 중복 ${metrics.duplicatePartnerCount}</span>
         <span class="metric-badge ${metricClass(metrics.duplicateOpponentCount, 5, 9)}">상대 중복 ${metrics.duplicateOpponentCount}</span>
@@ -893,6 +984,7 @@ function wireEvents() {
   $("#openGuestButton").addEventListener("click", () => openParticipantDialog(false));
   $("#guestDialogClose").addEventListener("click", () => $("#guestDialog").close());
   $("#guestForm").addEventListener("submit", addGuest);
+  $("#bulkSelectForm").addEventListener("submit", selectMembersByName);
   $("#generateButton").addEventListener("click", () => generate());
   $("#regenerateButton").addEventListener("click", () => generate({ regenerate: true }));
   $("#undoButton").addEventListener("click", () => {
