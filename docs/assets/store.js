@@ -191,16 +191,24 @@ class FirebaseStore {
     await this.modules.auth.signOut(this.auth);
   }
 
-  async seedIfEmpty() {
+  async seedMissingData() {
     const fs = this.modules.firestore;
     const membersRef = fs.collection(this.db, "members");
-    const existingMembers = await fs.getDocs(fs.query(membersRef, fs.limit(1)));
-    if (!existingMembers.empty) return;
+    const sessionsRef = fs.collection(this.db, "sessions");
+    const [existingMembers, existingSessions] = await Promise.all([
+      fs.getDocs(fs.query(membersRef, fs.limit(1))),
+      fs.getDocs(sessionsRef),
+    ]);
     const batch = fs.writeBatch(this.db);
-    this.seedData.members.forEach((member) => {
-      batch.set(fs.doc(this.db, "members", member.id), { ...member, seeded: true });
-    });
-    this.seedData.sessions.forEach((session) => {
+    let writeCount = 0;
+    if (existingMembers.empty) {
+      this.seedData.members.forEach((member) => {
+        batch.set(fs.doc(this.db, "members", member.id), { ...member, seeded: true });
+        writeCount += 1;
+      });
+    }
+    const existingSessionDates = new Set(existingSessions.docs.map((item) => item.id));
+    this.seedData.sessions.filter((session) => !existingSessionDates.has(session.date)).forEach((session) => {
       const payload = encodeSession(session);
       batch.set(fs.doc(this.db, "sessions", session.date), {
         ...payload,
@@ -209,13 +217,14 @@ class FirebaseStore {
         rulesVersion: this.seedData.rulesVersion,
         seeded: true,
       });
+      writeCount += 1;
     });
-    await batch.commit();
+    if (writeCount) await batch.commit();
   }
 
   async start({ onMembers, onSessions, onError }) {
     if (!this.user) throw new Error("운영자 로그인이 필요합니다.");
-    await this.seedIfEmpty();
+    await this.seedMissingData();
     const fs = this.modules.firestore;
     const memberQuery = fs.query(fs.collection(this.db, "members"), fs.orderBy("name"));
     const sessionQuery = fs.query(fs.collection(this.db, "sessions"), fs.orderBy("date", "desc"));
