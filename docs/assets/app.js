@@ -195,22 +195,6 @@ function renderSelected() {
   const participantHero = $("#participantsView .participant-hero");
   participantHero.classList.toggle("has-selection", players.length > 0);
   participantHero.classList.toggle("selection-complete", players.length === 8);
-  $("#selectedPlayers").innerHTML = players.length
-    ? players
-        .map(
-          (player) => `
-            <button
-              class="selected-chip"
-              type="button"
-              data-remove-player="${escapeHtml(player.id)}"
-              aria-label="${escapeHtml(player.name)} 선택 해제"
-            >
-              <span>${escapeHtml(player.name)} · ${escapeHtml(player.level)}</span>
-              <span class="chip-remove" aria-hidden="true">×</span>
-            </button>`,
-        )
-        .join("")
-    : '<span class="member-empty">아래 명단에서 참석자를 선택하세요.</span>';
   renderSelectionSummary(players);
 }
 
@@ -293,12 +277,6 @@ function toggleMember(id) {
   if (index >= 0) state.selectedIds.splice(index, 1);
   else if (selectedPlayers().length >= 8) return showToast("참석자는 8명까지만 선택할 수 있습니다.");
   else state.selectedIds.push(id);
-  renderMembers();
-}
-
-function removePlayer(id) {
-  state.selectedIds = state.selectedIds.filter((memberId) => memberId !== id);
-  state.guests = state.guests.filter((guest) => guest.id !== id);
   renderMembers();
 }
 
@@ -938,8 +916,6 @@ function wireEvents() {
     if (viewButton) setView(viewButton.dataset.view);
     const memberButton = event.target.closest("[data-member-id]");
     if (memberButton) toggleMember(memberButton.dataset.memberId);
-    const removeButton = event.target.closest("[data-remove-player]");
-    if (removeButton) removePlayer(removeButton.dataset.removePlayer);
     const candidateButton = event.target.closest("[data-candidate]");
     if (candidateButton) {
       state.activeCandidate = Number(candidateButton.dataset.candidate);
