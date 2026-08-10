@@ -87,6 +87,7 @@ def load_members(levels: dict[str, float]) -> dict[str, Player]:
 
 COURT_RE = re.compile(r"^([KL])코트\s*:\s*(.+)$")
 DATE_RE = re.compile(r"^##\s*(\d{4}-\d{2}-\d{2})")
+WAIVE_RE = re.compile(r"^>\s*의도된\s*예외\s*:\s*(.+)$")
 
 
 def parse_court_line(raw: str) -> tuple[list[str], list[str]] | None:
@@ -114,8 +115,13 @@ def parse_history() -> list[dict]:
         line = line.strip()
         m = DATE_RE.match(line)
         if m:
-            current = {"date": m.group(1), "courts": []}
+            current = {"date": m.group(1), "courts": [], "waived": []}
             sessions.append(current)
+            continue
+        m = WAIVE_RE.match(line)
+        if m and current is not None:
+            # "> 의도된 예외: 파트너 중복" — 점검에서 해당 항목을 눈감아 줍니다.
+            current["waived"] += [x.strip() for x in m.group(1).split(",") if x.strip()]
             continue
         m = COURT_RE.match(line)
         if m and current is not None:
@@ -869,7 +875,15 @@ def cmd_history(args) -> None:
         for p in dup:
             issues.append(f"파트너 중복({'+'.join(p)})")
 
-        print(f"  {s['date']}  {'OK' if not issues else '확인필요 — ' + ' / '.join(issues)}")
+        waived = [i for i in issues if any(w in i for w in s["waived"])]
+        remain = [i for i in issues if i not in waived]
+        if remain:
+            status = "확인필요 — " + " / ".join(remain)
+        elif waived:
+            status = "OK (의도된 예외 — " + " / ".join(waived) + ")"
+        else:
+            status = "OK"
+        print(f"  {s['date']}  {status}")
 
     # 게스트(회원 명단에 없는 이름)는 매번 다른 사람이므로 이력 집계에서 뺍니다.
     member_pairs = {p: w for p, w in hist_partner.items() if all(n in members for n in p)}
