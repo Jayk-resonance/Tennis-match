@@ -201,6 +201,44 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   padding: 0;
   text-align: left;
 }
+.segregated-field { margin: 0; padding: 0; border: 0; }
+.segregated-field legend {
+  width: 100%;
+  margin-bottom: 6px;
+  padding: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+.segregated-field legend span { margin-left: 4px; color: var(--primary-ink); font-size: 9.5px; }
+.segregated-options {
+  width: 100%;
+  height: 44px;
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.segregated-options label { position: relative; min-width: 0; }
+.segregated-options label + label { border-left: 1px solid var(--line-strong); }
+.segregated-options input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.segregated-options label > span {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.segregated-options input:checked + span { color: var(--surface); background: var(--primary); }
+.segregated-options input:focus-visible + span { outline: 2px solid var(--primary-ink); outline-offset: -3px; }
 .field-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .selection-summary { margin-top: 10px; padding: 12px; border: 1px solid rgba(100, 37, 254, 0.13); border-radius: var(--r-md); background: rgba(100, 37, 254, 0.035); }
 .selection-summary-heading { margin-bottom: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }

@@ -351,11 +351,18 @@ function permutations(values) {
   );
 }
 
-function orderSlots(candidate, players, segregatedSlot) {
-  const target = Math.min(Math.max(segregatedSlot - 1, 0), 2);
+function normalizeSegregatedSlots(segregatedSlots, segregatedSlot) {
+  const values = segregatedSlots ?? [segregatedSlot];
+  const normalized = [...new Set(values.map(Number).filter((value) => value >= 1 && value <= 3))];
+  if (!normalized.length) throw new Error("실력 분리 타임을 한 개 이상 선택해주세요.");
+  return normalized.sort((left, right) => left - right);
+}
+
+function orderSlots(candidate, players, segregatedSlots) {
+  const targets = segregatedSlots.map((slot) => slot - 1);
   const valid = permutations(candidate.entries)
-    .filter((entries) => isSegregated(entries[target].slot, players));
-  if (!valid.length) throw new Error("실력 분리 타임을 지정한 위치에 배치할 수 없습니다.");
+    .filter((entries) => targets.every((target) => isSegregated(entries[target].slot, players)));
+  if (!valid.length) throw new Error("실력 분리 타임을 선택한 위치에 배치할 수 없습니다.");
   valid.sort((left, right) => compareTuple(
     left.map((entry) => localPenalty(entry.slot, players)),
     right.map((entry) => localPenalty(entry.slot, players)),
@@ -417,9 +424,11 @@ export function generateCandidates({
   candidateCount = 3,
   seed = null,
   segregatedSlot = 2,
+  segregatedSlots = null,
   onProgress = () => {},
 }) {
   if (players.length !== 8) throw new Error(`참석자는 8명이어야 합니다 (현재 ${players.length}명).`);
+  const requiredSegregatedSlots = normalizeSegregatedSlots(segregatedSlots, segregatedSlot);
   const historyWeights = buildHistoryWeights(sessions);
   const random = seed === null ? null : seededRandom(seed);
   const scored = enumerateSlots(players)
@@ -455,7 +464,7 @@ export function generateCandidates({
         if (localTotal > bound) break;
         iteration += 1;
         const entries = [first, second, third];
-        if (!entries.some((entry) => isSegregated(entry.slot, players))) continue;
+        if (entries.filter((entry) => isSegregated(entry.slot, players)).length < requiredSegregatedSlots.length) continue;
         const slots = entries.map((entry) => entry.slot);
         const total = localTotal + globalPenalty(slots, players, historyWeights);
         best.push({
@@ -475,7 +484,7 @@ export function generateCandidates({
 
   onProgress(100);
   return best.map((candidate, index) => {
-    const ordered = orderSlots(candidate, players, segregatedSlot);
+    const ordered = orderSlots(candidate, players, requiredSegregatedSlots);
     const schedule = normalizeScheduleTeams(assignCourts(ordered, players), players);
     return {
       rank: index + 1,

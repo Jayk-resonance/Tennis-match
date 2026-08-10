@@ -11,7 +11,7 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
     />
-    <link rel="stylesheet" href="./assets/style.css?v=20260810-7" />
+    <link rel="stylesheet" href="./assets/style.css?v=20260810-9" />
   </head>
   <body>
     <div class="app-layout">
@@ -76,17 +76,24 @@
                     <input id="matchDate" type="date" />
                   </span>
                 </label>
-                <label class="field compact">
-                  <span>실력 분리 타임</span>
-                  <span class="field-control">
-                    <select id="segregatedSlot">
-                      <option value="1">1번째</option>
-                      <option value="2" selected>2번째</option>
-                      <option value="3">3번째</option>
-                    </select>
-                  </span>
-                </label>
-                <p class="field-note">선택한 순서에는 실력이 비슷한 선수끼리 경기하도록 배치해요.</p>
+                <fieldset class="field compact segregated-field">
+                  <legend>실력 분리 타임 <span>복수 선택 가능</span></legend>
+                  <div class="segregated-options" aria-label="실력 분리 타임 선택">
+                    <label>
+                      <input type="checkbox" name="segregatedSlot" value="1" />
+                      <span>1번째</span>
+                    </label>
+                    <label>
+                      <input type="checkbox" name="segregatedSlot" value="2" checked />
+                      <span>2번째</span>
+                    </label>
+                    <label>
+                      <input type="checkbox" name="segregatedSlot" value="3" />
+                      <span>3번째</span>
+                    </label>
+                  </div>
+                </fieldset>
+                <p class="field-note">여러 개를 선택하면 선택한 모든 타임에 실력이 비슷한 선수끼리 경기하도록 배치해요.</p>
               </div>
               <button id="generateButton" class="primary-button hero-action" type="button" disabled>
                 대진표 후보 만들기
@@ -295,6 +302,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./assets/app.js?v=20260810-6"></script>
+    <script type="module" src="./assets/app.js?v=20260810-7"></script>
   </body>
 </html>

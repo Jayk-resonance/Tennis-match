@@ -70,6 +70,18 @@ test("후보 3개가 모든 필수 조건을 충족한다", () => {
   }
 });
 
+test("실력 분리 타임을 여러 개 선택하면 선택한 모든 순서에 적용한다", () => {
+  for (const selectedSlots of [[2, 3], [1, 2, 3]]) {
+    const candidates = generateCandidates({ players, sessions, candidateCount: 3, segregatedSlots: selectedSlots });
+    assert.equal(candidates.length, 3);
+    for (const candidate of candidates) {
+      for (const selectedSlot of selectedSlots) {
+        assert.equal(candidate.evaluation.metrics.segregatedSlots.includes(selectedSlot - 1), true);
+      }
+    }
+  }
+});
+
 test("1.5점 차를 넘는 코트에는 일방 경기 추가 벌점을 적용한다", () => {
   const [candidate] = generateCandidates({ players, sessions, candidateCount: 1 });
   const expected = candidate.evaluation.courts.reduce(
