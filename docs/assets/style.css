@@ -157,19 +157,34 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .selection-meter strong { color: var(--primary); font-size: 38px; line-height: 1; }
 .selection-meter span { color: var(--muted); margin-left: 4px; font-size: 13px; font-weight: 700; }
 .hero-controls { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 210px)); gap: 7px 10px; }
-.field { display: flex; flex-direction: column; gap: 6px; }
-.field > span { color: var(--muted); font-size: 11.5px; font-weight: 700; }
+.field { min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 6px; }
+.field > span:not(.field-control) { color: var(--muted); font-size: 11.5px; font-weight: 700; }
 .field.compact { min-width: 0; }
-.field input, .field select {
+.field-control {
   width: 100%;
   min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
   height: 44px;
+  display: block;
+  overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
+  background: var(--surface);
+}
+.field-control input, .field-control select {
+  display: block;
+  width: 100%;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  height: 100%;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 0;
   padding: 0 12px;
   color: var(--ink);
-  background: var(--surface);
+  background: transparent;
+  font: inherit;
 }
 .field-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .selection-summary { margin-top: 10px; padding: 12px; border: 1px solid rgba(100, 37, 254, 0.13); border-radius: var(--r-md); background: rgba(100, 37, 254, 0.035); }

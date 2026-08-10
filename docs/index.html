@@ -11,7 +11,7 @@
       rel="stylesheet"
       href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css"
     />
-    <link rel="stylesheet" href="./assets/style.css?v=20260810-5" />
+    <link rel="stylesheet" href="./assets/style.css?v=20260810-6" />
   </head>
   <body>
     <div class="app-layout">
@@ -72,15 +72,19 @@
               <div class="hero-controls">
                 <label class="field compact">
                   <span>대진 날짜</span>
-                  <input id="matchDate" type="date" />
+                  <span class="field-control">
+                    <input id="matchDate" type="date" />
+                  </span>
                 </label>
                 <label class="field compact">
                   <span>실력 분리 타임</span>
-                  <select id="segregatedSlot">
-                    <option value="1">1번째</option>
-                    <option value="2" selected>2번째</option>
-                    <option value="3">3번째</option>
-                  </select>
+                  <span class="field-control">
+                    <select id="segregatedSlot">
+                      <option value="1">1번째</option>
+                      <option value="2" selected>2번째</option>
+                      <option value="3">3번째</option>
+                    </select>
+                  </span>
                 </label>
                 <p class="field-note">선택한 순서에는 실력이 비슷한 선수끼리 경기하도록 배치해요.</p>
               </div>
@@ -291,6 +295,6 @@
     </div>
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
-    <script type="module" src="./assets/app.js?v=20260810-5"></script>
+    <script type="module" src="./assets/app.js?v=20260810-6"></script>
   </body>
 </html>
