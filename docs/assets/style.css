@@ -156,12 +156,14 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 }
 .selection-meter strong { color: var(--primary); font-size: 38px; line-height: 1; }
 .selection-meter span { color: var(--muted); margin-left: 4px; font-size: 13px; font-weight: 700; }
-.hero-controls { grid-column: 1 / -1; display: flex; gap: 10px; }
+.hero-controls { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 210px)); gap: 7px 10px; }
 .field { display: flex; flex-direction: column; gap: 6px; }
 .field > span { color: var(--muted); font-size: 11.5px; font-weight: 700; }
-.field.compact { width: min(210px, 48%); }
+.field.compact { min-width: 0; }
 .field input, .field select {
   width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   height: 44px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
@@ -169,6 +171,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   color: var(--ink);
   background: var(--surface);
 }
+.field-note { grid-column: 1 / -1; margin: 0; color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .selected-players { grid-column: 1 / -1; display: flex; min-height: 34px; flex-wrap: wrap; gap: 6px; }
 .selected-chip {
   min-height: 40px;
@@ -185,6 +188,17 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   cursor: pointer;
 }
 .chip-remove { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--primary-tint); line-height: 1; }
+.selection-summary { margin-top: 10px; padding: 12px; border: 1px solid rgba(100, 37, 254, 0.13); border-radius: var(--r-md); background: rgba(100, 37, 254, 0.035); }
+.selection-summary-heading { margin-bottom: 8px; display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.selection-summary-heading strong { font-size: 12px; }
+.selection-summary-heading span { color: var(--muted); font-size: 10px; }
+.selection-summary-scroll { overflow-x: auto; }
+.selection-summary table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+.selection-summary th, .selection-summary td { padding: 6px; border: 1px solid rgba(100, 37, 254, 0.1); text-align: left; vertical-align: top; }
+.selection-summary th { width: 34px; color: var(--primary-ink); background: var(--primary-tint); font-size: 10.5px; text-align: center; }
+.selection-summary td { background: rgba(255, 255, 255, 0.7); }
+.selection-summary td strong { display: block; font-size: 11px; }
+.selection-summary td span { display: block; margin-top: 2px; color: var(--muted); font-size: 9px; line-height: 1.35; overflow-wrap: anywhere; }
 .hero-action { grid-column: 1 / -1; justify-self: start; }
 
 .primary-button, .secondary-button, .icon-button {
@@ -215,6 +229,12 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .section-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .section-heading h2 { margin: 3px 0 0; font-size: 19px; line-height: 1.3; letter-spacing: -0.025em; }
 .page-heading { margin-bottom: 18px; }
+.bulk-select { margin-top: 17px; padding: 12px; border: 1px solid var(--primary-border); border-radius: var(--r-md); background: var(--primary-tint); }
+.bulk-select > label { display: block; margin-bottom: 7px; color: var(--primary-ink); font-size: 11.5px; font-weight: 800; }
+.bulk-select-controls { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.bulk-select-controls input { min-width: 0; height: 44px; box-sizing: border-box; border: 1px solid var(--line-strong); border-radius: var(--r-sm); padding: 0 12px; color: var(--ink); background: var(--surface); }
+.bulk-select-controls button { white-space: nowrap; }
+.bulk-select small { display: block; margin-top: 7px; color: var(--muted); font-size: 10.5px; line-height: 1.4; }
 .search-field {
   height: 44px;
   margin-top: 17px;
@@ -317,7 +337,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 .status-badge { color: var(--primary-ink); background: var(--primary-tint); }
 .court-row { display: grid; grid-template-columns: 46px minmax(0, 1fr) 35px minmax(0, 1fr) auto; gap: 9px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
 .court-row:first-of-type { border-top: 0; }
-.court-badge { justify-self: start; padding: 5px 8px; color: var(--primary-ink); background: var(--primary-tint); }
+.court-badge { justify-self: start; padding: 5px 8px; color: var(--primary-ink); background: var(--primary-tint); white-space: nowrap; }
 .team { min-width: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
 .player-token {
   min-width: 0;
@@ -449,8 +469,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .hero-copy p, .page-heading p { font-size: 12px; }
   .selection-meter { min-width: 78px; padding: 10px 8px; }
   .selection-meter strong { font-size: 31px; }
-  .hero-controls { gap: 7px; }
-  .field.compact { width: 50%; }
+  .hero-controls { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
   .hero-action { width: 100%; }
   .card { padding: 16px 14px; }
   .selected-players { min-height: 44px; flex-wrap: nowrap; overflow-x: auto; padding-bottom: 2px; scrollbar-width: none; }
@@ -479,7 +498,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
   .edit-toolbar > div { align-self: flex-end; }
   .slot-card { padding: 12px 10px; }
   .slot-heading { margin-bottom: 8px; }
-  .court-row { grid-template-columns: 38px minmax(0, 1fr) 24px minmax(0, 1fr); gap: 5px; padding-block: 7px; }
+  .court-row { grid-template-columns: max-content minmax(0, 1fr) 24px minmax(0, 1fr); gap: 5px; padding-block: 7px; }
   .team { grid-template-columns: 1fr; gap: 4px; }
   .player-token { min-height: 44px; }
   .player-token .player-name { font-size: 11px; }
@@ -514,7 +533,7 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 @media (max-width: 390px) {
   .level-badge { padding-inline: 5px; }
   .member-button { gap: 4px; }
-  .court-row { grid-template-columns: 34px minmax(0, 1fr) 20px minmax(0, 1fr); }
+  .court-row { grid-template-columns: max-content minmax(0, 1fr) 20px minmax(0, 1fr); }
   .court-badge { padding-inline: 6px; }
 }
 

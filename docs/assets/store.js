@@ -1,4 +1,4 @@
-import { FIREBASE_SETTINGS } from "./firebase-config.js";
+import { FIREBASE_SETTINGS } from "./firebase-config.js?v=20260810-3";
 
 const LOCAL_MEMBERS_KEY = "tennis-match:members:v1";
 const LOCAL_SESSIONS_KEY = "tennis-match:sessions:v1";
