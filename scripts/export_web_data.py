@@ -30,7 +30,7 @@ def render_data() -> str:
     sessions = matchup.parse_history()
     payload = {
         "schemaVersion": 1,
-        "rulesVersion": "5cbec4e-web-v2",
+        "rulesVersion": "20260825-web-v3",
         "levels": levels,
         "members": [
             {
@@ -39,6 +39,7 @@ def render_data() -> str:
                 "gender": player.gender,
                 "level": player.level,
                 "score": player.score,
+                "club": player.club,
                 "guest": False,
                 "active": True,
             }

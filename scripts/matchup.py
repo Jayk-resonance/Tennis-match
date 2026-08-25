@@ -60,6 +60,7 @@ class Player:
     gender: str  # "남" / "여"
     level: str
     score: float
+    club: str = ""
     guest: bool = False
 
 
@@ -81,7 +82,7 @@ def load_members(levels: dict[str, float]) -> dict[str, Player]:
             level = row["레벨"].strip()
             if level not in levels:
                 raise SystemExit(f"[오류] '{name}'의 레벨 '{level}'이 levels.csv에 없습니다.")
-            members[name] = Player(name, row["성별"].strip(), level, levels[level])
+            members[name] = Player(name, row["성별"].strip(), level, levels[level], row.get("클럽", "").strip())
     return members
 
 

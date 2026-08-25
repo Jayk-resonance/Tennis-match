@@ -1,9 +1,11 @@
 import { generateCandidates } from "./matchup-core.js";
+import { generateExchangeCandidates } from "./exchange-core.js";
 
 self.addEventListener("message", ({ data }) => {
   if (data?.type !== "generate") return;
   try {
-    const candidates = generateCandidates({
+    const generator = data.payload?.matchType === "exchange" ? generateExchangeCandidates : generateCandidates;
+    const candidates = generator({
       ...data.payload,
       onProgress(progress) {
         self.postMessage({ type: "progress", progress });

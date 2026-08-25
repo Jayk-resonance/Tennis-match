@@ -10,6 +10,12 @@ import {
   swapPlayers,
   validateSchedule,
 } from "../../docs/assets/matchup-core.js";
+import {
+  evaluateExchangeSchedule,
+  exchangeScheduleToText,
+  generateExchangeCandidates,
+  validateExchangeSchedule,
+} from "../../docs/assets/exchange-core.js";
 
 const players = [
   ["김제우", "남", "A", 5],
@@ -38,6 +44,25 @@ const sessions = [
     ],
   },
 ];
+
+const exchangePlayers = [
+  ["김제우", "남", "A", 5, "TeSK"],
+  ["김동민", "남", "A", 5, "TeSK"],
+  ["김건희", "남", "B+", 4, "TeSK"],
+  ["김현재", "남", "A", 5, "TeSK"],
+  ["정민혁", "남", "A", 5, "금테클"],
+  ["유병호", "남", "A", 5, "금테클"],
+  ["김재홍", "남", "B+", 4, "금테클"],
+  ["함새롬", "여", "B", 3, "금테클"],
+].map(([name, gender, level, score, club], index) => ({
+  id: `exchange-${index}`,
+  name,
+  gender,
+  level,
+  score,
+  club,
+  guest: false,
+}));
 
 test("8명 기준 한 타임 조합은 315개다", () => {
   assert.equal(enumerateSlots(players).length, 315);
@@ -109,4 +134,38 @@ test("서로 다른 타임으로 끌어 놓는 동작은 차단한다", () => {
     () => swapPlayers(candidate.schedule, [0, 0, 0, 0], [1, 1, 1, 1]),
     /같은 타임/,
   );
+});
+
+test("교류전 후보는 1~3타임 클럽 대항, 마지막 타임 혼합 파트너 규칙을 지킨다", () => {
+  const candidates = generateExchangeCandidates({ players: exchangePlayers, candidateCount: 3 });
+  assert.equal(candidates.length, 3);
+  for (const candidate of candidates) {
+    assert.equal(candidate.schedule.length, 4);
+    assert.equal(validateExchangeSchedule(candidate.schedule, exchangePlayers).valid, true);
+    candidate.schedule.slice(0, 3).flat().forEach((court) => {
+      assert.equal(exchangePlayers[court[0][0]].club, exchangePlayers[court[0][1]].club);
+      assert.notEqual(exchangePlayers[court[0][0]].club, exchangePlayers[court[1][0]].club);
+    });
+    candidate.schedule[3].flat().forEach((team) => {
+      assert.equal(new Set(team.map((index) => exchangePlayers[index].club)).size, 2);
+    });
+  }
+});
+
+test("교류전 수동 교체 뒤에도 규칙 위반 여부와 벌점을 다시 평가한다", () => {
+  const [candidate] = generateExchangeCandidates({ players: exchangePlayers, candidateCount: 1 });
+  const swapped = swapPlayers(candidate.schedule, [0, 0, 0, 0], [0, 0, 1, 0]);
+  const evaluation = evaluateExchangeSchedule(swapped, exchangePlayers);
+  assert.equal(evaluation.validation.valid, false);
+  assert.match(evaluation.validation.reason, /1~3타임/);
+  assert.equal(typeof evaluation.metrics.totalPenalty, "number");
+});
+
+test("교류전 공유 문구는 B·C코트와 4타임을 표시한다", () => {
+  const [candidate] = generateExchangeCandidates({ players: exchangePlayers, candidateCount: 1 });
+  const text = exchangeScheduleToText(candidate.schedule, exchangePlayers, "2026-08-30");
+  assert.match(text, /TeSK × 금테클 교류전/);
+  assert.equal((text.match(/B코트:/g) ?? []).length, 4);
+  assert.equal((text.match(/C코트:/g) ?? []).length, 4);
+  assert.match(text, /21:30–22:00/);
 });

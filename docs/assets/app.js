@@ -6,7 +6,13 @@ import {
   scheduleToText,
   swapPlayers,
 } from "./matchup-core.js";
-import { ConflictError, createStore } from "./store.js?v=20260811-1";
+import {
+  EXCHANGE_COURT_LABELS,
+  EXCHANGE_SLOT_LABELS,
+  evaluateExchangeSchedule,
+  exchangeScheduleToText,
+} from "./exchange-core.js";
+import { ConflictError, createStore } from "./store.js?v=20260825-2";
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -21,6 +27,7 @@ const BREAKDOWN_LABELS = Object.freeze({
   historyOpponent: "최근 상대 재대결",
   duplicateOpponent: "같은 날 상대 중복",
   spread: "코트 내 실력 편차",
+  courtBalance: "B·C코트 배정 균형",
 });
 
 const VIEW_LABELS = Object.freeze({
@@ -39,6 +46,9 @@ const state = {
   sessions: [],
   selectedIds: [],
   guests: [],
+  matchType: "regular",
+  generatedMatchType: "regular",
+  historyFilter: "all",
   filter: "all",
   search: "",
   manageMembers: false,
@@ -52,7 +62,7 @@ const state = {
   suppressClick: false,
 };
 
-const worker = new Worker("./assets/matchup-worker.js", { type: "module" });
+const worker = new Worker("./assets/matchup-worker.js?v=20260825-1", { type: "module" });
 let pendingGeneration = null;
 let toastTimer = null;
 
@@ -106,6 +116,19 @@ function formatDate(value) {
   return `${year}.${month}.${day}(${weekday})`;
 }
 
+function nextExchangeSunday(sessions) {
+  const used = new Set(sessions.map((session) => session.date));
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  for (let offset = 0; offset < 24; offset += 1) {
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + offset + 1, 0, 12);
+    lastDay.setDate(lastDay.getDate() - lastDay.getDay());
+    const value = dateToInput(lastDay);
+    if (lastDay >= today && !used.has(value)) return value;
+  }
+  return dateToInput(today);
+}
+
 function selectedPlayers() {
   const members = state.selectedIds
     .map((id) => state.members.find((member) => member.id === id))
@@ -113,8 +136,51 @@ function selectedPlayers() {
   return [...members, ...state.guests];
 }
 
-function activeSessions() {
-  return state.sessions.filter((session) => session.status !== "archived");
+function activeSessions(matchType = state.matchType) {
+  return state.sessions.filter(
+    (session) => session.status !== "archived" && (session.matchType ?? "regular") === matchType,
+  );
+}
+
+function withSeedClubs(members) {
+  const seedByName = new Map((state.seedData?.members ?? []).map((member) => [member.name, member]));
+  return members.map((member) => ({ ...member, club: member.club || seedByName.get(member.name)?.club || "" }));
+}
+
+function setMatchType(matchType, { keepSelection = false } = {}) {
+  if (!['regular', 'exchange'].includes(matchType)) return;
+  const changed = state.matchType !== matchType;
+  state.matchType = matchType;
+  if (changed && !keepSelection) {
+    state.selectedIds = [];
+    state.guests = [];
+    state.candidates = [];
+    state.generatedPlayers = [];
+  }
+  const exchange = matchType === "exchange";
+  $$('[data-match-type]').forEach((button) => {
+    const active = button.dataset.matchType === matchType;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-checked", String(active));
+  });
+  $("#participantEyebrow").textContent = exchange ? "매월 마지막 주 일요일" : "이번 주 코트 운영";
+  $("#participantTitle").textContent = exchange ? "TeSK 4명 · 금테클 4명을 선택하세요" : "참석자 8명을 선택하세요";
+  $("#participantDescription").textContent = exchange
+    ? "소속별로 네 명씩 선택하면 규칙 A에 맞는 교류전 후보를 만듭니다."
+    : "회원은 눌러서 선택하고, 처음 온 분은 게스트로 바로 추가할 수 있습니다.";
+  $("#regularOptions").classList.toggle("hidden", exchange);
+  $("#regularFieldNote").classList.toggle("hidden", exchange);
+  $("#exchangeOptions").classList.toggle("hidden", !exchange);
+  $("#generateButton").textContent = exchange ? "교류전 후보 만들기" : "대진표 후보 만들기";
+  const resultHeading = $("#resultsView .page-heading");
+  $(".eyebrow", resultHeading).textContent = exchange ? "교류전 자동 생성 결과" : "자동 생성 결과";
+  $("h1", resultHeading).textContent = exchange ? "교류전 후보를 비교하고 조정하세요" : "후보를 비교하고 조정하세요";
+  if (changed) {
+    $("#matchDate").value = exchange
+      ? nextExchangeSunday(activeSessions("exchange"))
+      : nextAvailableSunday(activeSessions("regular"));
+  }
+  renderMembers();
 }
 
 function setView(view) {
@@ -148,6 +214,25 @@ function renderSelectionSummary(players) {
   if (players.length !== 8) {
     container.classList.add("hidden");
     container.innerHTML = "";
+    return;
+  }
+  if (state.matchType === "exchange") {
+    const clubs = ["TeSK", "금테클"];
+    container.innerHTML = `
+      <div class="selection-summary-heading">
+        <strong>교류전 선택 요약</strong><span>클럽별 4명</span>
+      </div>
+      <div class="exchange-summary-grid">
+        ${clubs.map((club) => `
+          <section>
+            <h3>${club}</h3>
+            ${players.filter((player) => player.club === club).map((player) => `
+              <p><strong>${escapeHtml(player.name)}</strong><span>${escapeHtml(player.gender)} · ${escapeHtml(player.level)}</span></p>
+            `).join("")}
+          </section>
+        `).join("")}
+      </div>`;
+    container.classList.remove("hidden");
     return;
   }
   const genders = ["남", "여"];
@@ -187,11 +272,18 @@ function renderSelectionSummary(players) {
 
 function renderSelected() {
   const players = selectedPlayers();
+  const teskCount = players.filter((player) => player.club === "TeSK").length;
+  const goldCount = players.filter((player) => player.club === "금테클").length;
+  const complete = state.matchType === "exchange"
+    ? players.length === 8 && teskCount === 4 && goldCount === 4
+    : players.length === 8;
   $("#selectedCount").textContent = String(players.length);
-  $("#generateButton").disabled = players.length !== 8;
+  $("#teskSelectedCount").textContent = String(teskCount);
+  $("#goldSelectedCount").textContent = String(goldCount);
+  $("#generateButton").disabled = !complete;
   const participantHero = $("#participantsView .participant-hero");
   participantHero.classList.toggle("has-selection", players.length > 0);
-  participantHero.classList.toggle("selection-complete", players.length === 8);
+  participantHero.classList.toggle("selection-complete", complete);
   renderSelectionSummary(players);
 }
 
@@ -204,8 +296,13 @@ function renderMembers() {
       if (state.filter === "inactive" && member.active !== false) return false;
       if (state.filter === "selected" && !selected.has(member.id)) return false;
       if (["남", "여"].includes(state.filter) && member.gender !== state.filter) return false;
+      if (["TeSK", "금테클"].includes(state.filter) && member.club !== state.filter) return false;
       if (!query) return true;
-      return `${member.name} ${member.level}`.toLocaleLowerCase("ko").includes(query);
+      return `${member.name} ${member.level} ${member.club}`.toLocaleLowerCase("ko").includes(query);
+    })
+    .sort((left, right) => {
+      if (state.matchType === "exchange" && left.club !== right.club) return left.club === "TeSK" ? -1 : 1;
+      return left.name.localeCompare(right.name, "ko");
     });
 
   $("#memberGrid").innerHTML = members.length
@@ -217,6 +314,7 @@ function renderMembers() {
               <span class="member-meta">
                 <span class="gender-badge">${escapeHtml(member.gender)}</span>
                 <span class="level-badge">${escapeHtml(member.level)}</span>
+                <span class="club-badge ${member.club === "금테클" ? "gold" : "tesk"}">${escapeHtml(member.club || "미지정")}</span>
               </span>`;
             if (state.manageMembers) {
               return `
@@ -273,7 +371,13 @@ function toggleMember(id) {
   const index = state.selectedIds.indexOf(id);
   if (index >= 0) state.selectedIds.splice(index, 1);
   else if (selectedPlayers().length >= 8) return showToast("참석자는 8명까지만 선택할 수 있습니다.");
-  else state.selectedIds.push(id);
+  else {
+    const member = state.members.find((item) => item.id === id);
+    if (state.matchType === "exchange" && selectedPlayers().filter((player) => player.club === member?.club).length >= 4) {
+      return showToast(`${member?.club ?? "해당 클럽"} 참석자는 4명까지만 선택할 수 있습니다.`);
+    }
+    state.selectedIds.push(id);
+  }
   renderMembers();
 }
 
@@ -293,6 +397,7 @@ function selectMembersByName(event) {
   const alreadySelected = [];
   const missing = [];
   const skipped = [];
+  const clubLimited = [];
   names.forEach((name) => {
     const member = activeMembers.find((item) => item.name === name);
     if (!member) {
@@ -307,6 +412,10 @@ function selectMembersByName(event) {
       skipped.push(name);
       return;
     }
+    if (state.matchType === "exchange" && selectedPlayers().filter((player) => player.club === member.club).length >= 4) {
+      clubLimited.push(name);
+      return;
+    }
     state.selectedIds.push(member.id);
     added.push(name);
   });
@@ -317,6 +426,7 @@ function selectMembersByName(event) {
   if (alreadySelected.length) messages.push(`이미 선택됨: ${alreadySelected.join(", ")}`);
   if (missing.length) messages.push(`명단에서 찾지 못함: ${missing.join(", ")}`);
   if (skipped.length) messages.push(`8명 제한으로 제외: ${skipped.join(", ")}`);
+  if (clubLimited.length) messages.push(`클럽별 4명 제한으로 제외: ${clubLimited.join(", ")}`);
   feedback.textContent = messages.join(" ") || "선택 상태가 바뀌지 않았습니다.";
   if (added.length) showToast(`${selectedPlayers().length}명의 참석자가 선택되었습니다.`);
 }
@@ -350,8 +460,12 @@ worker.addEventListener("message", ({ data }) => {
 async function generate({ regenerate = false } = {}) {
   const players = selectedPlayers();
   if (players.length !== 8) return showToast("참석자 8명을 먼저 선택해주세요.");
-  const segregatedSlots = $$("input[name='segregatedSlot']:checked").map(({ value }) => Number(value));
-  if (!segregatedSlots.length) return showToast("실력 분리 타임을 한 개 이상 선택해주세요.");
+  const exchange = state.matchType === "exchange";
+  if (exchange && (players.filter((player) => player.club === "TeSK").length !== 4 || players.filter((player) => player.club === "금테클").length !== 4)) {
+    return showToast("TeSK 4명과 금테클 4명을 선택해주세요.");
+  }
+  const segregatedSlots = exchange ? [] : $$("input[name='segregatedSlot']:checked").map(({ value }) => Number(value));
+  if (!exchange && !segregatedSlots.length) return showToast("실력 분리 타임을 한 개 이상 선택해주세요.");
   state.seed = regenerate ? (state.seed ?? 0) + 1 : null;
   setLoading(true);
   try {
@@ -361,8 +475,10 @@ async function generate({ regenerate = false } = {}) {
       candidateCount: 3,
       seed: state.seed,
       segregatedSlots,
+      matchType: state.matchType,
     });
     state.generatedPlayers = clone(players);
+    state.generatedMatchType = state.matchType;
     state.candidates = candidates.map((candidate) => ({ ...candidate, undo: [], edited: false }));
     state.activeCandidate = 0;
     state.tapSource = null;
@@ -379,9 +495,12 @@ function activeCandidate() {
 }
 
 function candidateEvaluations() {
-  return state.candidates.map((candidate) =>
-    evaluateSchedule(candidate.schedule, state.generatedPlayers, activeSessions()),
-  );
+  const evaluate = state.generatedMatchType === "exchange" ? evaluateExchangeSchedule : evaluateSchedule;
+  return state.candidates.map((candidate) => evaluate(
+    candidate.schedule,
+    state.generatedPlayers,
+    activeSessions(state.generatedMatchType),
+  ));
 }
 
 function renderCandidateTabs(evaluations) {
@@ -393,6 +512,11 @@ function renderCandidateTabs(evaluations) {
         (item) => item.metrics.totalPenalty < evaluation.metrics.totalPenalty,
       ).length;
       const candidate = state.candidates[index];
+      const label = index === 0
+        ? "추천 · 낮은 벌점"
+        : difference === 0
+          ? "동점 · 다른 조합"
+          : `${rank}순위 · 낮은 벌점 순`;
       return `
         <button
           type="button"
@@ -402,7 +526,7 @@ function renderCandidateTabs(evaluations) {
           aria-selected="${index === state.activeCandidate}"
         >
           <span>후보 ${index + 1}${candidate.edited ? " · 수정됨" : ""}</span>
-          <small>${difference === 0 ? "추천 · 낮은 벌점" : `${rank}순위 · 낮은 벌점 순`}</small>
+          <small>${label}</small>
         </button>`;
     })
     .join("");
@@ -419,6 +543,7 @@ function renderEvaluation(evaluation, evaluations) {
   const bestPenalty = Math.min(...evaluations.map((item) => item.metrics.totalPenalty));
   const difference = metrics.totalPenalty - bestPenalty;
   const rank = 1 + evaluations.filter((item) => item.metrics.totalPenalty < metrics.totalPenalty).length;
+  const recommended = state.activeCandidate === 0;
   const validationClass = evaluation.validation.valid ? "ok" : "danger";
   const breakdown = Object.entries(evaluation.breakdown)
     .sort((left, right) => right[1] - left[1])
@@ -433,11 +558,11 @@ function renderEvaluation(evaluation, evaluations) {
     <div class="evaluation-main">
       <span class="eyebrow">후보 ${state.activeCandidate + 1} 간단 평가</span>
       <h2>${escapeHtml(evaluation.headline)}</h2>
-      <p>${difference === 0 ? "세 후보 중 벌점이 가장 낮은 추천 조합입니다." : `추천 후보보다 벌점이 ${formatScore(difference)} 더 많습니다.`}</p>
+      <p>${recommended ? "세 후보 중 먼저 살펴볼 추천 조합입니다." : difference === 0 ? "추천 후보와 벌점이 같은 다른 조합입니다." : `추천 후보보다 벌점이 ${formatScore(difference)} 더 많습니다.`}</p>
     </div>
-    <div class="candidate-recommendation ${difference === 0 ? "best" : ""}">
-      <strong>${difference === 0 ? "추천" : `${rank}순위`}</strong>
-      <span>벌점 낮은 순</span>
+    <div class="candidate-recommendation ${recommended ? "best" : ""}">
+      <strong>${recommended ? "추천" : difference === 0 ? "동점" : `${rank}순위`}</strong>
+      <span>${difference === 0 && !recommended ? "다른 조합" : "벌점 낮은 순"}</span>
     </div>
     <div class="metric-row metric-primary">
       <span class="metric-badge ${validationClass}">${escapeHtml(evaluation.validation.reason)}</span>
@@ -451,6 +576,7 @@ function renderEvaluation(evaluation, evaluations) {
         <span class="metric-badge ${metricClass(metrics.duplicateOpponentCount, 5, 9)}">상대 중복 ${metrics.duplicateOpponentCount}</span>
         <span class="metric-badge ${metricClass(metrics.genderMismatchCount)}">성별 주의 ${metrics.genderMismatchCount}</span>
         <span class="metric-badge">최근 파트너 ${metrics.reusedPartnerCount}쌍 · 상대 ${metrics.reusedOpponentCount}쌍</span>
+        ${state.generatedMatchType === "exchange" ? `<span class="metric-badge ${metricClass(metrics.courtImbalanceCount)}">코트 불균형 ${metrics.courtImbalanceCount}명</span>` : ""}
       </div>
       <div class="breakdown-grid">${breakdown}</div>
     </details>`;
@@ -482,9 +608,12 @@ function playerToken(player, path) {
 function renderSchedule(evaluation) {
   const candidate = activeCandidate();
   const players = state.generatedPlayers;
+  const exchange = state.generatedMatchType === "exchange";
+  const slotLabels = exchange ? EXCHANGE_SLOT_LABELS : SLOT_LABELS;
+  const courtLabels = exchange ? EXCHANGE_COURT_LABELS : ["K", "L"];
   $("#scheduleBoard").innerHTML = candidate.schedule
     .map((slot, slotIndex) => {
-      const segregated = evaluation.metrics.segregatedSlots.includes(slotIndex);
+      const segregated = !exchange && evaluation.metrics.segregatedSlots.includes(slotIndex);
       const courts = slot
         .map((court, courtIndex) => {
           const courtMetric = evaluation.courts.find(
@@ -499,7 +628,7 @@ function renderSchedule(evaluation) {
           );
           return `
             <div class="court-row">
-              <span class="court-badge">${courtIndex === 0 ? "K" : "L"}코트</span>
+              <span class="court-badge">${courtLabels[courtIndex]}코트</span>
               <div class="team">${teams[0]}</div>
               <span class="vs">VS</span>
               <div class="team">${teams[1]}</div>
@@ -513,8 +642,8 @@ function renderSchedule(evaluation) {
       return `
         <article class="slot-card">
           <div class="slot-heading">
-            <div><h3>${slotIndex + 1}타임</h3><p>${SLOT_LABELS[slotIndex]}</p></div>
-            ${segregated ? '<span class="status-badge">실력 분리 타임</span>' : ""}
+            <div><h3>${slotIndex + 1}타임</h3><p>${slotLabels[slotIndex]}</p></div>
+            ${exchange ? `<span class="status-badge">${slotIndex === 3 ? "혼합 파트너" : "클럽 대항"}</span>` : segregated ? '<span class="status-badge">실력 분리 타임</span>' : ""}
           </div>
           ${courts}
         </article>`;
@@ -631,23 +760,31 @@ function sessionCourts(session) {
 function sessionText(session) {
   if (session.text) return session.text;
   const courts = sessionCourts(session);
-  const lines = [`## ${session.date} 코트운영`, ""];
+  const exchange = session.matchType === "exchange";
+  const slotLabels = exchange ? EXCHANGE_SLOT_LABELS : SLOT_LABELS;
+  const courtLabels = exchange ? EXCHANGE_COURT_LABELS : ["K", "L"];
+  const lines = [`## ${session.date} ${exchange ? "TeSK × 금테클 교류전" : "코트운영"}`, ""];
   for (let index = 0; index < courts.length; index += 1) {
-    if (index % 2 === 0) lines.push(SLOT_LABELS[index / 2] ?? `${index / 2 + 1}타임`);
+    if (index % 2 === 0) lines.push(slotLabels[index / 2] ?? `${index / 2 + 1}타임`);
     const [left, right] = courts[index];
-    lines.push(`${index % 2 === 0 ? "K" : "L"}코트: ${left.join(" ")} vs ${right.join(" ")}`);
+    lines.push(`${courtLabels[index % 2]}코트: ${left.join(" ")} vs ${right.join(" ")}`);
     if (index % 2 === 1) lines.push("");
   }
   return lines.join("\n").trim();
 }
 
 function renderHistory() {
-  const sessions = [...state.sessions].sort((a, b) => b.date.localeCompare(a.date));
+  const sessions = [...state.sessions]
+    .filter((session) => state.historyFilter === "all" || (session.matchType ?? "regular") === state.historyFilter)
+    .sort((a, b) => b.date.localeCompare(a.date));
   const renderCards = (items, archived = false) => items
     .map((session) => {
       const courts = sessionCourts(session);
+      const exchange = session.matchType === "exchange";
+      const slotCount = exchange ? 4 : 3;
+      const courtLabels = exchange ? EXCHANGE_COURT_LABELS : ["K", "L"];
       const participantCount = session.participants?.length || new Set(courts.flat(2)).size;
-      const slots = [0, 1, 2]
+      const slots = Array.from({ length: slotCount }, (_, index) => index)
         .map((slotIndex) => {
           const pair = courts.slice(slotIndex * 2, slotIndex * 2 + 2);
           if (!pair.length) return "";
@@ -657,17 +794,17 @@ function renderHistory() {
               ${pair
                 .map(
                   (court, courtIndex) =>
-                    `<p>${courtIndex === 0 ? "K" : "L"} · ${escapeHtml(court[0].join("+"))} vs ${escapeHtml(court[1].join("+"))}</p>`,
+                    `<p>${courtLabels[courtIndex]} · ${escapeHtml(court[0].join("+"))} vs ${escapeHtml(court[1].join("+"))}</p>`,
                 )
                 .join("")}
             </div>`;
         })
         .join("");
       return `
-        <article class="history-card ${archived ? "archived" : ""}">
+        <article class="history-card ${exchange ? "exchange" : ""} ${archived ? "archived" : ""}">
           <div class="history-head">
             <div>
-              <h2>${escapeHtml(formatDate(session.date))}</h2>
+              <div class="history-title-row"><h2>${escapeHtml(formatDate(session.date))}</h2><span class="match-type-badge ${exchange ? "exchange" : ""}">${exchange ? "교류전" : "정규전"}</span></div>
               <p>${participantCount}명 · ${escapeHtml(session.updatedBy ?? (session.status === "imported" ? "기존 history.md" : "확정 기록"))} · 버전 ${session.revision ?? 1}</p>
             </div>
             <div class="history-actions">
@@ -692,7 +829,7 @@ function renderHistory() {
   const archived = sessions.filter((session) => session.status === "archived");
   const currentMarkup = current.length
     ? renderCards(current)
-    : '<div class="history-empty">현재 사용 중인 확정 대진표가 없습니다.</div>';
+    : `<div class="history-empty">${state.historyFilter === "exchange" ? "확정된 교류전이 없습니다." : state.historyFilter === "regular" ? "확정된 정규전이 없습니다." : "현재 사용 중인 확정 대진표가 없습니다."}</div>`;
   const archiveMarkup = archived.length
     ? `<details class="archive-section">
         <summary>보관된 대진 ${archived.length}개</summary>
@@ -722,6 +859,7 @@ async function toggleSessionArchive(date) {
 function reuseSession(date) {
   const session = state.sessions.find((item) => item.date === date);
   if (!session) return;
+  setMatchType(session.matchType ?? "regular");
   const participantSnapshots = session.participants ?? [];
   const names = participantSnapshots.length
     ? participantSnapshots.map((participant) => participant.name)
@@ -758,7 +896,9 @@ async function copyText(text, successMessage = "대진표를 복사했습니다.
 async function shareActiveCandidate() {
   const candidate = activeCandidate();
   if (!candidate) return;
-  const text = scheduleToText(candidate.schedule, state.generatedPlayers, $("#matchDate").value);
+  const text = state.generatedMatchType === "exchange"
+    ? exchangeScheduleToText(candidate.schedule, state.generatedPlayers, $("#matchDate").value)
+    : scheduleToText(candidate.schedule, state.generatedPlayers, $("#matchDate").value);
   if (navigator.share) {
     try {
       await navigator.share({ title: "테니스 대진표", text });
@@ -773,7 +913,8 @@ async function shareActiveCandidate() {
 async function confirmActiveCandidate() {
   const candidate = activeCandidate();
   if (!candidate) return;
-  const evaluation = evaluateSchedule(candidate.schedule, state.generatedPlayers, activeSessions());
+  const evaluate = state.generatedMatchType === "exchange" ? evaluateExchangeSchedule : evaluateSchedule;
+  const evaluation = evaluate(candidate.schedule, state.generatedPlayers, activeSessions(state.generatedMatchType));
   if (!evaluation.validation.valid) return showToast(evaluation.validation.reason);
   const date = $("#matchDate").value;
   const existing = state.sessions.find((session) => session.date === date);
@@ -783,12 +924,15 @@ async function confirmActiveCandidate() {
   );
   const session = {
     date,
+    matchType: state.generatedMatchType,
     status: "confirmed",
     participants,
     schedule: clone(candidate.schedule),
     courts,
     evaluation,
-    text: scheduleToText(candidate.schedule, participants, date),
+    text: state.generatedMatchType === "exchange"
+      ? exchangeScheduleToText(candidate.schedule, participants, date)
+      : scheduleToText(candidate.schedule, participants, date),
     rulesVersion: state.seedData.rulesVersion,
   };
   $("#confirmButton").disabled = true;
@@ -828,10 +972,14 @@ async function addGuest(event) {
   const name = $("#guestName").value.trim();
   const gender = $("#guestGender").value;
   const level = $("#guestLevel").value;
+  const club = $("#guestClub").value;
   const score = Number(state.seedData.levels[level]);
   const save = $("#saveAsMember").checked;
   if (!name) return;
   if (!save && selectedPlayers().length >= 8) return showToast("참석자는 8명까지만 추가할 수 있습니다.");
+  if (state.matchType === "exchange" && selectedPlayers().filter((player) => player.club === club).length >= 4) {
+    return showToast(`${club} 참석자는 4명까지만 추가할 수 있습니다.`);
+  }
   if (selectedPlayers().some((player) => player.name === name)) return showToast("이미 선택된 이름입니다.");
 
   const existingMember = state.members.find((member) => member.name === name);
@@ -844,6 +992,7 @@ async function addGuest(event) {
     gender,
     level,
     score,
+    club,
     guest: !save,
     active: true,
   };
@@ -874,7 +1023,7 @@ async function startDataSync() {
   try {
     state.stopSync = await state.store.start({
       onMembers(members) {
-        state.members = members;
+        state.members = withSeedClubs(members);
         state.selectedIds = state.selectedIds.filter((id) =>
           members.some((member) => member.id === id && member.active !== false),
         );
@@ -934,6 +1083,14 @@ function wireEvents() {
     if (historyArchive) toggleSessionArchive(historyArchive.dataset.historyArchive);
     const memberStatus = event.target.closest("[data-member-status]");
     if (memberStatus) toggleMemberStatus(memberStatus.dataset.memberStatus);
+    const matchTypeButton = event.target.closest("[data-match-type]");
+    if (matchTypeButton) setMatchType(matchTypeButton.dataset.matchType);
+    const historyFilter = event.target.closest("[data-history-filter]");
+    if (historyFilter) {
+      state.historyFilter = historyFilter.dataset.historyFilter;
+      $$('[data-history-filter]').forEach((button) => button.classList.toggle("active", button === historyFilter));
+      renderHistory();
+    }
   });
 
   $("#memberSearch").addEventListener("input", (event) => {
@@ -1001,11 +1158,11 @@ async function boot() {
     const response = await fetch("./data/app-data.json", { cache: "no-store" });
     if (!response.ok) throw new Error("초기 회원 데이터를 불러오지 못했습니다.");
     state.seedData = await response.json();
-    state.members = clone(state.seedData.members);
+    state.members = withSeedClubs(clone(state.seedData.members));
     state.sessions = clone(state.seedData.sessions);
     populateLevels();
     $("#matchDate").value = nextAvailableSunday(activeSessions());
-    renderMembers();
+    setMatchType("regular", { keepSelection: true });
     renderHistory();
     state.store = await createStore(state.seedData);
     updateModeUi();
