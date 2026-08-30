@@ -1,4 +1,5 @@
 import importlib.util
+import json
 import unittest
 from pathlib import Path
 
@@ -15,6 +16,12 @@ class WebDataTest(unittest.TestCase):
         spec.loader.exec_module(module)
         actual = (ROOT / "docs" / "data" / "app-data.json").read_text(encoding="utf-8")
         self.assertEqual(actual, module.render_data())
+
+    def test_jeon_sangwon_is_promoted_to_a(self):
+        data = json.loads((ROOT / "docs" / "data" / "app-data.json").read_text(encoding="utf-8"))
+        member = next(item for item in data["members"] if item["name"] == "전상원")
+        self.assertEqual(member["level"], "A")
+        self.assertEqual(member["score"], data["levels"]["A"])
 
 
 if __name__ == "__main__":

@@ -142,9 +142,17 @@ function activeSessions(matchType = state.matchType) {
   );
 }
 
-function withSeedClubs(members) {
+function withSeedMemberData(members) {
   const seedByName = new Map((state.seedData?.members ?? []).map((member) => [member.name, member]));
-  return members.map((member) => ({ ...member, club: member.club || seedByName.get(member.name)?.club || "" }));
+  return members.map((member) => {
+    const seedMember = seedByName.get(member.name);
+    return {
+      ...member,
+      level: seedMember?.level ?? member.level,
+      score: seedMember?.score ?? member.score,
+      club: seedMember?.club ?? member.club ?? "",
+    };
+  });
 }
 
 function setMatchType(matchType, { keepSelection = false } = {}) {
@@ -1023,7 +1031,7 @@ async function startDataSync() {
   try {
     state.stopSync = await state.store.start({
       onMembers(members) {
-        state.members = withSeedClubs(members);
+        state.members = withSeedMemberData(members);
         state.selectedIds = state.selectedIds.filter((id) =>
           members.some((member) => member.id === id && member.active !== false),
         );
@@ -1158,7 +1166,7 @@ async function boot() {
     const response = await fetch("./data/app-data.json", { cache: "no-store" });
     if (!response.ok) throw new Error("초기 회원 데이터를 불러오지 못했습니다.");
     state.seedData = await response.json();
-    state.members = withSeedClubs(clone(state.seedData.members));
+    state.members = withSeedMemberData(clone(state.seedData.members));
     state.sessions = clone(state.seedData.sessions);
     populateLevels();
     $("#matchDate").value = nextAvailableSunday(activeSessions());
