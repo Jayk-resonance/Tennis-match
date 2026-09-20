@@ -25,7 +25,7 @@ const players = [
   ["조재윤", "남", "B", 3],
   ["신명수", "남", "B", 3],
   ["김예은", "여", "C", 1],
-  ["조영혜", "여", "C-", 0.5],
+  ["조영혜", "여", "C+", 2],
 ].map(([name, gender, level, score], index) => ({
   id: `p${index}`,
   name,
