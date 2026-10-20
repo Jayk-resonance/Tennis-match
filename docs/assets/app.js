@@ -309,7 +309,8 @@ function renderMembers() {
       return `${member.name} ${member.level} ${member.club}`.toLocaleLowerCase("ko").includes(query);
     })
     .sort((left, right) => {
-      if (state.matchType === "exchange" && left.club !== right.club) return left.club === "TeSK" ? -1 : 1;
+      const scoreDifference = right.score - left.score;
+      if (scoreDifference !== 0) return scoreDifference;
       return left.name.localeCompare(right.name, "ko");
     });
 
